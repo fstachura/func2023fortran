@@ -5,25 +5,10 @@ module Lexer (
 ) where
 
 import Utils
+import TokenTypes
 import Debug.Trace
 
--- basic types
-
 identifierChars = letters ++ digits
-
-data Token = 
-    TokenEqEq | TokenNeq | TokenLt | TokenLeq | TokenGt | TokenGeq |
-    TokenAnd | TokenOr | 
-
-    TokenLeftParen | TokenRightParen | TokenComma | TokenSemicolon | 
-    TokenEq | 
-    TokenPlus | TokenMinus | TokenStar | TokenSlash | TokenPow |
-
-    TokenString(String) | TokenInteger(Integer) | TokenFloat(Double) | TokenBool(Bool) | 
-    TokenIdentifier(String) |
-
-    TokenEof
-    deriving (Show)
 
 -- lexing utils
 
@@ -196,13 +181,7 @@ addUpdates LexerStateUpdate { updatePos=apos, updateLine=aline }
     | aline > bline = stateUpdate apos aline
     | otherwise     = stateUpdate (apos+bpos) aline 
 
--- token wrapper
-
-data TokenWithInfo = TokenWithInfo { 
-    token :: Token,
-    lexerState :: LexerState
-}
-    deriving (Show)
+stateToLocation s = (newTokenLocation (statePos s) (stateLine s))
 
 -- entry
 
@@ -212,11 +191,12 @@ data LexingResult = Ok | Error
 ---- maps string into a list of tokens. returns successfully consumed tokens, second value is Error on failure
 lexFull :: LexerState -> String -> ([TokenWithInfo], LexingResult)
 lexFull state s = case (lexToken s) of
-    Just(TokenEof, _, stateUpdate) -> ([TokenWithInfo{token=TokenEof, lexerState=state}], Ok)
+    Just(TokenEof, _, stateUpdate) -> 
+        ([TokenWithInfo{token=TokenEof, tokenLocation=(stateToLocation state)}], Ok)
     Just(t, rest, stateUpdate) -> 
         case (lexFull (updateState state stateUpdate) rest) of
             (tokens, Ok) -> (c ++ tokens, Ok)
             (tokens, Error) -> (c ++ tokens, Error)
-        where c = [TokenWithInfo{token=t, lexerState=state}]
+        where c = [TokenWithInfo{token=t, tokenLocation=(stateToLocation state)}]
     Nothing -> ([], Error)
 
