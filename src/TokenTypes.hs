@@ -2,12 +2,18 @@ module TokenTypes (
     Token(..),
     TokenWithInfo(..),
     TokenLocation(..),
+    equivOperators,
+    relOperators,
+    addOperators,
+    multOperators,
     newTokenLocation
 ) where
 
 data Token = 
     TokenEqEq | TokenNeq | TokenLt | TokenLeq | TokenGt | TokenGeq |
+    TokenEqv | TokenNeqv | 
     TokenAnd | TokenOr | 
+    TokenNot |
 
     TokenLeftParen | TokenRightParen | TokenComma | TokenSemicolon | 
     TokenEq | 
@@ -17,7 +23,12 @@ data Token =
     TokenIdentifier(String) |
 
     TokenEof
-    deriving (Show)
+    deriving (Show, Eq)
+
+equivOperators = [TokenEqv, TokenNeqv]
+relOperators = [TokenEqEq, TokenNeq, TokenLt, TokenLeq, TokenGt, TokenGeq]
+addOperators = [TokenPlus, TokenMinus]
+multOperators = [TokenStar, TokenSlash]
 
 data TokenLocation = TokenLocation {
     tokenPos :: Int,

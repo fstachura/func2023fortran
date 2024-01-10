@@ -12,36 +12,20 @@ identifierChars = letters ++ digits
 
 -- lexing utils
 
----- consume chars while char != arg or char == newline, return consumed chars and the rest of the string
-lexUntilOrNewline :: Char -> String -> Maybe(String, String)
-lexUntilOrNewline _ "" = Nothing
-lexUntilOrNewline char (r:rs)
-    | (char == r) = Just("", rs)
-    | (char == '\n') = Nothing
-    | otherwise = case result of
-        Just(s, rest) -> Just(r:s, rest)
-        Nothing       -> result
-    where result = (lexUntilOrNewline char rs)
+nothingIfFirstEmpty :: (String, b) -> Maybe(String, b)
+nothingIfFirstEmpty ("", _) = Nothing
+nothingIfFirstEmpty a = (Just a)
+
+advance :: (String, String) -> (String, String)
+advance (a, b) = (a, drop 1 b)
 
 ---- consume chars while char != arg, return consumed chars and the rest of the string
-lexUntil :: Char -> String -> Maybe(String, String)
-lexUntil _ "" = Nothing
-lexUntil char (r:rs)
-    | (char == r) = Just("", rs)
-    | otherwise = case result of
-        Just(s, rest) -> Just(r:s, rest)
-        Nothing       -> result
-    where result = (lexUntil char rs)
+lexUntil :: String -> String -> Maybe(String, String)
+lexUntil matcher = nothingIfFirstEmpty . (break (flip (elem) matcher))
 
 ---- consume chars while matcher contains char, return consumed chars and the rest of the string
 lexWhile :: String -> String -> Maybe(String, String)
-lexWhile matcher "" = Nothing
-lexWhile matcher (x:xs)
-    | (x `elem` matcher) = case result of
-        Just(s, rest) -> Just(x:s, rest)
-        Nothing       -> Just([x], xs)
-    | otherwise      = Nothing
-    where result = (lexWhile matcher xs)
+lexWhile matcher = nothingIfFirstEmpty . (span (flip (elem) matcher))
 
 -- lexing code
 
@@ -49,8 +33,12 @@ lexWhile matcher (x:xs)
 matchDotToken :: String -> Maybe(Token, LexerStateUpdate)
 matchDotToken "AND" = Just(TokenAnd, (posStateUpdate 3))
 matchDotToken "OR" = Just(TokenOr, stateUpdate2)
+matchDotToken "NOT" = Just(TokenNot, (posStateUpdate 3))
 matchDotToken "EQ" = Just(TokenEq, stateUpdate2)
 matchDotToken "NE" = Just(TokenNeq, stateUpdate2)
+matchDotToken "EQV" = Just(TokenEqv, (posStateUpdate 3))
+matchDotToken "NEQV" = Just(TokenNeqv, (posStateUpdate 4))
+
 matchDotToken "LT" = Just(TokenLt, stateUpdate2)
 matchDotToken "LE" = Just(TokenLeq, stateUpdate2)
 matchDotToken "GT" = Just(TokenGt, stateUpdate2)
@@ -61,39 +49,36 @@ matchDotToken "FALSE" = Just(TokenBool(False), (posStateUpdate 5))
 matchDotToken "F" = Just(TokenBool(False), stateUpdate1)
 matchDotToken _ = Nothing
 
+---- TODO consume -/+
 ---- attempts to consume an integer or a float, returns Nothing on failure
 lexNumber :: String -> Maybe(Token, String, LexerStateUpdate)
-lexNumber str = case result of
-        Just(a, '.':rs) -> 
-            maybeOr 
-                (Just(TokenInteger(read a), '.':rs, (posStateUpdate (length a))))
-                (\(b, rs) -> Just(TokenFloat(
+lexNumber str = 
+    (traceShowId (lexWhile digits str)) >>=
+    \result -> case result of
+        (a, '.':rs) -> 
+            ((lexWhile digits rs) >>= 
+                \(b, rs) -> Just(TokenFloat(
                     read (a ++ "." ++ b)), 
                     rs, 
                     (posStateUpdate ((length a)+1+(length b)))
-                )) 
-                (lexWhile digits rs) 
-        Just(a, rest) -> 
+                )) `altM`
+                    Just(TokenInteger(read a), '.':rs, (posStateUpdate (length a)))
+        (a, rest) -> 
             Just(TokenInteger(read a), rest, (posStateUpdate (length a)))
-        Nothing -> Nothing
-    where result = lexWhile digits str
 
 ---- attempts to consume a dotted identifier/operator (.TRUE., .EQ., ...)
 lexDotId :: String -> Maybe(Token, String, LexerStateUpdate)
-lexDotId xs = case (lexUntilOrNewline '.' xs) of
-    Just(id, rest) -> 
-        maybeOrNothing 
-            (\(x,u) -> Just(x, rest, u)) 
-            (matchDotToken id) 
-    Nothing -> Nothing
+lexDotId xs = 
+    (lexUntil ".\n" xs) >>=
+    \(id, rest) -> (matchDotToken id) >>= 
+        \(token, u) -> Just(token, rest, u)
 
 ---- attempts to consume a token, returns Nothing on failure
 lexToken :: String -> Maybe(Token, String, LexerStateUpdate)
 lexToken ('.':xs) = lexDotId xs
 lexToken ('"':xs) = 
-    maybeOrNothing
-        (\(s,r) -> Just(TokenString(s), r, (strStateUpdate s))) 
-        (lexUntilOrNewline '"' xs) 
+    (lexUntil "\"\n" xs) >>=
+        \(s,r) -> Just(TokenString(s), r, (strStateUpdate s)) 
 
 lexToken ('<':'=':xs) = Just(TokenLeq, xs, stateUpdate2)
 lexToken ('>':'=':xs) = Just(TokenGeq, xs, stateUpdate2)
@@ -114,24 +99,23 @@ lexToken (',':xs)     = Just(TokenComma, xs, stateUpdate1)
 lexToken (';':xs)     = Just(TokenSemicolon, xs, stateUpdate1)
 lexToken ('\n':xs)    = Just(TokenSemicolon, xs, stateUpdate1)
 
-lexToken (' ':xs) = case (lexToken xs) of
-    Just(token, rest, update) -> 
-        Just(token, rest, (addUpdates stateUpdate1 update))
-    Nothing -> Nothing
+lexToken (' ':xs) = 
+    (lexToken xs) >>=
+        \(token, rest, update) -> 
+            Just(token, rest, (addUpdates stateUpdate1 update))
 
 lexToken (x:xs) 
     | x `elem` digits = lexNumber (x:xs)
     | x `elem` letters = 
-        maybeOr
+        ((lexWhile identifierChars xs) >>=
+            \(s,r) -> Just(TokenIdentifier(x:s), r, (posStateUpdate ((length s)+1)))) `altM`
             (Just(TokenIdentifier([x]), xs, stateUpdate1))
-            (\(s,r) -> Just(TokenIdentifier(x:s), r, (posStateUpdate ((length s)+1)))) 
-            (lexWhile identifierChars xs) 
+            
 
 lexToken ('!':xs) = 
-    maybeOr
-        (Just(TokenSemicolon, "", lineStateUpdate))
-        (\(s,r) -> Just(TokenSemicolon, r, lineStateUpdate))
-        (lexUntil '\n' xs)
+    ((lexUntil "\n" xs) >>= \(s,r) -> Just(TokenSemicolon, r, lineStateUpdate)) `altM`
+        Just(TokenSemicolon, "", lineStateUpdate)
+        
 
 lexToken ""           = Just(TokenEof, "", emptyStateUpdate)
 lexToken _            = Nothing
