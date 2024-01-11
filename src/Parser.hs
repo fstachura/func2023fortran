@@ -39,10 +39,18 @@ advanceParser ParserState{ tokensLeft=(t:ts) } = ParserState {
 
 type ParsingFunction = ParserState -> ParseResult
 
-expression, equivalence, equivOperand, 
-    --orOperand, 
-    --andOperand, level4Expr, level2Expr, addOperand, 
-    --multOperand, level1Expr, 
+program, 
+    executionPart, executionPartConstruct, executableConstruct,
+    ifConstruct, elseIfStmt, elseStmt,
+    doConstruct, loopControl, 
+    block,
+    actionStmt, 
+    assignmentStmt, gotoStmt, ifStmt, computedGotoStmt,
+    printStmt, readStmt, 
+    expression, equivalence, equivOperand, 
+    orOperand, 
+    andOperand, level4Expr, level2Expr, addOperand, 
+    multOperand, level1Expr, 
     primary :: ParsingFunction
 
 tokenToBinaryOp :: Token -> Maybe(BinaryOp)
@@ -65,6 +73,8 @@ tokenToBinaryOp _           = Nothing
 
 tokenToUnaryOp :: Token -> Maybe(UnaryOp)
 tokenToUnaryOp TokenNot     = Just(UnOpNot)
+tokenToUnaryOp TokenMinus   = Just(UnOpMinus)
+tokenToUnaryOp TokenPlus    = Just(UnOpPlus)
 tokenToUnaryOp _            = Nothing
 
 matchToken :: [Token] -> ParserState -> Maybe(ParserState)
@@ -135,6 +145,8 @@ parseUnaryLeftLoop f tokens orgState =
 advanceResult :: ParseResult -> ParseResult
 advanceResult = (flip (>>=)) (\(expr, state) -> Right(expr, (advanceParser state)))
 
+-- expression parsers
+
 expression      = equivalence
 equivalence     = parseBinaryRightLoop equivOperand equivOperators equivOperand
 equivOperand    = parseBinaryRightLoop orOperand [TokenOr] orOperand
@@ -146,6 +158,7 @@ level2Expr      = parseBinaryLeftLoop addOperand addOperators
 addOperand      = parseBinaryRightLoop multOperand multOperators addOperand
 multOperand     = parseBinaryRightLoop level1Expr [TokenPow] multOperand
 level1Expr      = parseUnaryLeftLoop primary [TokenNot]
+-- TODO calls
 
 primary state@ParserState { tokensLeft=(twi@TokenWithInfo{token=t}:ts) } = 
     case t of
@@ -154,20 +167,34 @@ primary state@ParserState { tokensLeft=(twi@TokenWithInfo{token=t}:ts) } =
         TokenFloat(f) -> Right(ExprFloat(f), advanceParser state)
         TokenBool(b) -> Right(ExprBool(b), advanceParser state)
         TokenIdentifier(i) -> Right(ExprIdentifier(i), advanceParser state)
-        TokenLeftParen -> case expr of
-            Right(
-                expr,
-                state@ParserState{ 
-                    tokensLeft=(TokenWithInfo{ token=TokenRightParen }:ts) 
-                }) 
-                -> Right(expr, advanceParser state)
-            Right(
-                expr,
-                state@ParserState{ 
-                    tokensLeft=(t:ts) 
-                }) 
-                -> Left(ParserErrorExpectedRightParen(t))
-            Left(_) -> expr
-            where expr = (expression $ advanceParser state) 
+        TokenLeftParen -> (expression $ advanceParser state) >>=
+            \x -> case x of
+                (expr,
+                    state@ParserState{ 
+                        tokensLeft=(TokenWithInfo{ token=TokenRightParen }:ts) 
+                    }) -> Right(expr, advanceParser state)
+                (expr,
+                    state@ParserState{ 
+                        tokensLeft=(t:ts) 
+                    }) -> Left(ParserErrorExpectedRightParen(t))
         otherwise -> Left(ParserErrorExpectedExpression(twi))
 
+-- statement parsers
+
+program = expression
+executionPart = expression
+executionPartConstruct = expression
+executableConstruct = expression
+ifConstruct = expression
+elseIfStmt = expression 
+elseStmt = expression
+doConstruct = expression 
+loopControl = expression
+block = expression
+actionStmt = expression
+assignmentStmt = expression
+gotoStmt = expression
+ifStmt = expression
+computedGotoStmt = expression
+printStmt = expression
+readStmt = expression
