@@ -1,15 +1,20 @@
 module Map (
+    SimpleMap,
+    mapLookup,
+    mapInsert,
+    mapDelete,
+    simpleMap
 ) where
 
 type SimpleMap k v = [(k,v)]
 
-lookup :: Ord k => k -> SimpleMap k v -> Maybe v
-lookup k m = case filter (((==) k) . fst) m of
-                (x:xs) -> Just (snd x)
-                ([]) -> Nothing
+mapLookup :: Ord k => k -> SimpleMap k v -> Maybe v
+mapLookup = lookup 
 
-insert :: Ord k => k -> v -> SimpleMap k v -> SimpleMap k v
-insert k v m = (k,v):(delete k m)
+mapInsert :: Ord k => k -> v -> SimpleMap k v -> SimpleMap k v
+mapInsert k v m = (k,v):(mapDelete k m)
 
-delete :: Ord k => k -> SimpleMap k v -> SimpleMap k v
-delete k = filter (((/=) k) . fst)
+mapDelete :: Ord k => k -> SimpleMap k v -> SimpleMap k v
+mapDelete k = filter (((/=) k) . fst)
+
+simpleMap = []

@@ -21,9 +21,14 @@ main = do
             let tokens = (lexFull defaultLexerState src)
             mapM_ putStrLn (map (show . token) (fst tokens))
             putStrLn (show (snd tokens))
-            let parsed = (expression $ newParserState $ fst tokens) >>= (Right . fst)
-            putStrLn $ show $ parsed
-            case parsed of
-                Right(expr) -> putStrLn $ show $ (eval defaultEvalContext expr)
+            case (snd tokens) of
+                Ok -> 
+                    let parsed = (program $ newParserState $ fst tokens) in
+                    putStrLn $ show $ parsed
+                Error ->
+                    putStrLn "lexing error"
+
+            --case parsed of
+            --    Right(expr) -> putStrLn $ show $ (eval defaultEvalContext expr)
      
 

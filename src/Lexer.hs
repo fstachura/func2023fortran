@@ -1,7 +1,8 @@
 module Lexer (
     lexFull,
     defaultLexerState,
-    token
+    token,
+    LexingResult(..)
 ) where
 
 import Utils
@@ -70,8 +71,8 @@ lexNumber str =
 lexDotId :: String -> Maybe(Token, String, LexerStateUpdate)
 lexDotId xs = 
     (lexUntil ".\n" xs) >>=
-    \(id, rest) -> (matchDotToken id) >>= 
-        \(token, u) -> Just(token, rest, u)
+    \(id, r:rest) -> (matchDotToken id) >>= 
+        \(token, u) -> Just(token, rest, (addUpdates u stateUpdate1))
 
 ---- attempts to consume a token, returns Nothing on failure
 lexToken :: String -> Maybe(Token, String, LexerStateUpdate)

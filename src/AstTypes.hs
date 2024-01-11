@@ -2,8 +2,12 @@ module AstTypes (
     Expr(..),
     BinaryOp(..),
     UnaryOp(..),
+    GoToMap,
+    StmtBlockType,
     Stmt(..)
 ) where
+
+import Map
 
 data BinaryOp = BinOpEq | BinOpNeq | BinOpGt | BinOpGeq | BinOpLt | BinOpLeq | 
                 BinOpAdd | BinOpSub | BinOpMult | BinOpDiv | BinOpPow | 
@@ -23,6 +27,10 @@ data Expr =
     ExprIdentifier(String)
     deriving(Show)
 
+type GoToMap = (SimpleMap Integer [Stmt])
+
+type StmtBlockType = ([Stmt], GoToMap)
+
 data Stmt = 
     StmtAssign(String, Expr) | 
     StmtLoop(String, Expr, Expr, Expr, Stmt) |
@@ -30,7 +38,11 @@ data Stmt =
     StmtComputedGoto([Integer], Expr) |
     StmtArithmeticIf(Expr, Integer, Integer, Integer) |
     StmtIf(Expr, Stmt, Stmt) |
-    StmtPrint([Expr]) | 
-    StmtRead([Expr]) |
-    Stmt(Stmt)
+    StmtComputedIf(Expr, Integer, Integer, Integer) |
+    StmtWrite([Expr]) | 
+    StmtRead([String]) |
+    StmtProgram(StmtBlockType) |
+    StmtLabeled(Integer, Stmt) | 
+    StmtBlock(StmtBlockType)
+    deriving(Show)
 

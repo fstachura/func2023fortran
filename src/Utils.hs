@@ -5,7 +5,8 @@ module Utils (
     letters,
     digits,
     altM,
-    altE
+    altE,
+    strToLower
 ) where
 
 altM :: (Maybe a) -> (Maybe a) -> (Maybe a)
@@ -24,3 +25,13 @@ lowercaseLetters = "abcdefghijklmnoprstquwxyz"
 uppercaseLetters = "ABCDEFGHIJKLMNOPRSTQUWXYZ"
 letters = lowercaseLetters ++ uppercaseLetters
 digits = "0123456789"
+
+toLower :: Char -> Char
+toLower c 
+    | (o >= 65 && o <= 90)  = toEnum (o + 32)
+    | otherwise             = c
+    where o = fromEnum c
+
+strToLower :: String -> String
+strToLower s = map toLower s
+
