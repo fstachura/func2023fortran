@@ -54,7 +54,7 @@ matchDotToken _ = Nothing
 ---- attempts to consume an integer or a float, returns Nothing on failure
 lexNumber :: String -> Maybe(Token, String, LexerStateUpdate)
 lexNumber str = 
-    (traceShowId (lexWhile digits str)) >>=
+    (lexWhile digits str) >>=
     \result -> case result of
         (a, '.':rs) -> 
             ((lexWhile digits rs) >>= 

@@ -21,6 +21,10 @@ maybeOr :: b -> (a -> b) -> (Maybe a) -> b
 maybeOr _ f (Just(a)) = f a
 maybeOr b _ Nothing = b
 
+--mapLeft :: (a -> c) -> Either a b -> c
+--mapLeft f (Left a)  = f a
+--mapLeft _ b         = b
+
 lowercaseLetters = "abcdefghijklmnoprstquwxyz"
 uppercaseLetters = "ABCDEFGHIJKLMNOPRSTQUWXYZ"
 letters = lowercaseLetters ++ uppercaseLetters
