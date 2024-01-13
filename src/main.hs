@@ -4,6 +4,9 @@ import Lexer
 import Parser
 import Utils
 import Eval
+import GotoMap
+import Map
+import AstTypes
 
 -- goto map 
 -- ifs and dos push their own goto map so that jumping into ifs is impossible
@@ -24,7 +27,12 @@ main = do
             case (snd tokens) of
                 Ok -> 
                     let parsed = (program $ newParserState $ fst tokens) in
-                    putStrLn $ show $ parsed
+                    case parsed of 
+                        Right(StmtBlockType(stmts), _) -> do
+                            let execResult = (execBlock (evalContext (createGotoMap stmts simpleMap)) stmts) 
+                            execResult >>=
+                                putStrLn . show 
+                        Left(_) -> putStrLn $ show $ parsed
                 Error ->
                     putStrLn "lexing error"
 

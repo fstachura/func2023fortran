@@ -57,6 +57,7 @@ advanceIfLabel state@ParserState { lastIfLabel=l } = state {
 
 tokenToBinaryOp :: Token -> Maybe(BinaryOp)
 tokenToBinaryOp TokenEqEq   = Just(BinOpEq)
+tokenToBinaryOp TokenEq     = Just(BinOpEq)
 tokenToBinaryOp TokenNeq    = Just(BinOpNeq)
 tokenToBinaryOp TokenEqv    = Just(BinOpEq)
 tokenToBinaryOp TokenNeqv   = Just(BinOpNeq)

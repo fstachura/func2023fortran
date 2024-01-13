@@ -25,7 +25,7 @@ data Token =
     TokenEof
     deriving (Show, Eq)
 
-equivOperators = [TokenEqv, TokenNeqv]
+equivOperators = [TokenEqv, TokenNeqv, TokenEq]
 relOperators = [TokenEqEq, TokenNeq, TokenLt, TokenLeq, TokenGt, TokenGeq]
 addOperators = [TokenPlus, TokenMinus]
 multOperators = [TokenStar, TokenSlash]

@@ -1,9 +1,11 @@
 module Eval (
     eval,
+    execBlock,
     evalContext
 ) where
 
 import System.IO
+import Debug.Trace
 import AstTypes
 import Map
 import Utils
@@ -14,12 +16,18 @@ data Value =
     ValueString(String) | 
     ValueFloat(Double) | 
     ValueBool(Bool)
-    deriving(Show)
+
+instance Show Value where
+    show (ValueInteger(i))   = show i
+    show (ValueString(s))    = s
+    show (ValueFloat(f))     = show f
+    show (ValueBool(b))      = show b
 
 data EvalError = 
     EvalErrorUnknownVariable(String) | 
-    EvalErrorUnmatchedTypes | 
+    EvalErrorIncompatibleTypes | 
     EvalErrorInvalidOp | 
+    EvalErrorLabelNotFound(Integer) | 
     EvalErrorNotImplemented
     deriving(Show)
 
@@ -31,9 +39,9 @@ data EvalContext = EvalContext {
 }
     deriving(Show)
 
-evalContext = EvalContext { 
+evalContext gotoMap = EvalContext { 
     variableMap=simpleMap,
-    gotoMap=simpleMap
+    gotoMap=gotoMap
 }
 
 type EvalResult = (Either EvalError Value)
@@ -41,15 +49,71 @@ type EvalResult = (Either EvalError Value)
 --execBlock :: EvalContext -> [Stmt] -> IO (Either EvalError EvalContext)
 --execBlock context stmts = do
 
-execStmt :: EvalContext -> Stmt -> IO (Either EvalError EvalContext)
+goto :: LabelType -> Integer -> EvalContext -> IO (Either EvalError EvalContext)
+goto t l context = do
+    case (mapLookup (t, l) (gotoMap context)) of
+        Just(res) -> execBlock context res
+        Nothing -> return (Left(EvalErrorLabelNotFound(l)))
 
-execStmt context (StmtLabeled(_, _, stmt)) = execStmt context stmt
+execBlock :: EvalContext -> [Stmt] -> IO (Either EvalError EvalContext)
 
-execStmt context (StmtAssign(name, expr)) = do
-    return $ (eval context expr) >>= \res ->
-        (return (evalContext { variableMap=(mapInsert name res (variableMap context)) }))
+execBlock context ((StmtIntCompiledIf(expr, label)):stmts) = do
+    case (eval context expr) of
+        Right(ifResult) -> 
+            if (truthy ifResult) then 
+                goto LabelIf label context
+            else
+                execBlock context stmts
+        Left(err) -> return $ Left(err)
 
-execStmt context (StmtRead([])) = return $ return $ context
+execBlock context ((StmtAbsoluteGoto(lt, label)):stmts) = do
+    case (mapLookup (lt, label) (gotoMap context)) of
+        Just(res) -> execBlock context res
+        Nothing -> return (Left(EvalErrorLabelNotFound(label)))
+
+execBlock context ((StmtArithmeticIf(expr, a, b, c)):stmts) = do
+    case (eval context expr) of
+        Right(ifResult) -> 
+            case (castToInt ifResult) of
+                Just(val) ->
+                    if val < 0 then     
+                        goto LabelExplicit a context
+                    else if val == 0 then
+                        goto LabelExplicit b context
+                    else 
+                        goto LabelExplicit c context
+                Nothing -> return $ Left(EvalErrorIncompatibleTypes)
+        Left(err) -> return $ Left(err)
+
+execBlock context ((StmtComputedGoto(labels, expr)):stmts) = do
+    case (eval context expr) of
+        Right(exprResult) -> 
+            case (castToInt exprResult) of
+                Just(val) ->
+                    if (fromIntegral (val-1)) >= (length labels) || (fromIntegral (val-1)) <= 0 then
+                        execBlock context stmts
+                    else 
+                        goto LabelExplicit (labels !! (fromIntegral (val-1))) context
+                Nothing -> return $ Left(EvalErrorIncompatibleTypes)
+        Left(err) -> return $ Left(err)
+
+execBlock context ((StmtLabeled(_, _, stmt)):stmts) = execBlock context (stmt:stmts)
+
+execBlock context ((StmtAssign(name, expr)):stmts) = do
+    case (eval context expr) of
+        Right(res) ->
+            (execBlock (context { variableMap=(mapInsert name res (variableMap context)) }) stmts)
+        Left(err) -> return $ Left $ err
+
+execBlock context (StmtRead(_):stmts) = execBlock context stmts
+
+execBlock context (StmtWrite(exprs):stmts) = do
+    execWrite context exprs
+    execBlock context stmts
+
+execBlock context (StmtNoop:stmts) = execBlock context stmts
+
+execBlock context [] = return $ Right $ context
 
 --execStmt context (StmtRead(ids)) = do
 --    line <- readLine
@@ -57,17 +121,16 @@ execStmt context (StmtRead([])) = return $ return $ context
 --    (putStr $ show (eval context expr)) >>
 --    (execStmt context (StmtRead(ids)))
 
-execStmt context (StmtWrite(expr:exprs)) = 
-    (putStr $ show (eval context expr)) >>
-    (execStmt context (StmtWrite(exprs)))
+execWrite :: EvalContext -> [Expr] -> IO (Either EvalError EvalContext)
 
-execStmt context (StmtWrite([])) = do
+execWrite context (expr:exprs) = 
+    case (eval context expr) of
+        Right(res) -> (putStr $ show $ res) >> (execWrite context exprs)
+        Left(err) -> return $ Left $ err
+
+execWrite context [] = do
     putStrLn ""
     return (return context)
-
-execStmt context (StmtWrite(expr:exprs)) = 
-    (putStr $ show (eval context expr)) >>
-    (execStmt context (StmtWrite(exprs)))
 
 -- expression evaluation
 
@@ -136,3 +199,16 @@ evalUnary UnOpMinus (ValueFloat a)      = (Right $ ValueFloat   $ negate $ a)
 evalUnary UnOpPlus  (ValueFloat a)      = (Right $ ValueFloat   $ negate $ a)
 
 evalUnary _ _           = (Left EvalErrorInvalidOp)
+
+truthy :: Value -> Bool
+truthy (ValueBool a) = a
+truthy (ValueInteger a) = a /= 0
+truthy (ValueFloat a) = a /= 0
+truthy (ValueString a) = (length a) /= 0
+
+castToInt :: Value -> Maybe(Integer)
+castToInt (ValueBool a) = Just $ if a then 1 else 0
+castToInt (ValueInteger a) = Just $ a
+castToInt (ValueFloat a) = Just $ floor a
+castToInt (ValueString a) = Nothing
+

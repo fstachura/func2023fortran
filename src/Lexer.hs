@@ -79,7 +79,7 @@ lexToken :: String -> Maybe(Token, String, LexerStateUpdate)
 lexToken ('.':xs) = lexDotId xs
 lexToken ('"':xs) = 
     (lexUntil "\"\n" xs) >>=
-        \(s,r) -> Just(TokenString(s), r, (strStateUpdate s)) 
+        \(s,r) -> Just(TokenString(s), (drop 1 r), (strStateUpdate s)) 
 
 lexToken ('<':'=':xs) = Just(TokenLeq, xs, stateUpdate2)
 lexToken ('>':'=':xs) = Just(TokenGeq, xs, stateUpdate2)
@@ -98,7 +98,7 @@ lexToken ('(':xs)     = Just(TokenLeftParen, xs, stateUpdate1)
 lexToken (')':xs)     = Just(TokenRightParen, xs, stateUpdate1)
 lexToken (',':xs)     = Just(TokenComma, xs, stateUpdate1)
 lexToken (';':xs)     = Just(TokenSemicolon, xs, stateUpdate1)
-lexToken ('\n':xs)    = Just(TokenSemicolon, xs, stateUpdate1)
+lexToken ('\n':xs)    = Just(TokenSemicolon, xs, lineStateUpdate)
 
 lexToken (' ':xs) = 
     (lexToken xs) >>=
@@ -114,10 +114,9 @@ lexToken (x:xs)
             
 
 lexToken ('!':xs) = 
-    ((lexUntil "\n" xs) >>= \(s,r) -> Just(TokenSemicolon, r, lineStateUpdate)) `altM`
-        Just(TokenSemicolon, "", lineStateUpdate)
-        
-
+    ((lexUntil "\n" xs) >>= \(s,r) -> Just(TokenSemicolon, (drop 1 r), lineStateUpdate)) `altM`
+        (Just(TokenSemicolon, (drop 1 xs), lineStateUpdate))
+            
 lexToken ""           = Just(TokenEof, "", emptyStateUpdate)
 lexToken _            = Nothing
 
@@ -133,12 +132,12 @@ state pos line = LexerState { statePos=pos, stateLine=line }
 
 updateState :: LexerState -> LexerStateUpdate -> LexerState
 updateState curState stateUpdate 
-    | (updateLine stateUpdate) > (stateLine curState) = 
-        state (updatePos stateUpdate) (updateLine stateUpdate) 
+    | (updateLine stateUpdate) >= 1 =
+        state 0 ((stateLine curState)+(updateLine stateUpdate))
     | otherwise = 
-        state ((statePos curState)+(updatePos stateUpdate)) (stateLine curState) 
+        state ((statePos curState)+(updatePos stateUpdate)) (stateLine curState)
 
-defaultLexerState = state 0 0 
+defaultLexerState = state 0 1 
 
 -- state update
 
@@ -164,7 +163,7 @@ addUpdates LexerStateUpdate { updatePos=apos, updateLine=aline }
            LexerStateUpdate { updatePos=bpos, updateLine=bline }
     | bline > aline = stateUpdate bpos bline
     | aline > bline = stateUpdate apos aline
-    | otherwise     = stateUpdate (apos+bpos) aline 
+    | otherwise     = stateUpdate (max apos bpos) aline 
 
 stateToLocation s = (newTokenLocation (statePos s) (stateLine s))
 
@@ -180,8 +179,8 @@ lexFull state s = case (lexToken s) of
         ([TokenWithInfo{token=TokenEof, tokenLocation=(stateToLocation state)}], Ok)
     Just(t, rest, stateUpdate) -> 
         case (lexFull (updateState state stateUpdate) rest) of
-            (tokens, Ok) -> (c ++ tokens, Ok)
-            (tokens, Error) -> (c ++ tokens, Error)
-        where c = [TokenWithInfo{token=t, tokenLocation=(stateToLocation state)}]
+            (tokens, Ok) -> (c:tokens, Ok)
+            (tokens, Error) -> (c:tokens, Error)
+        where c = TokenWithInfo{token=t, tokenLocation=(stateToLocation state)}
     Nothing -> ([], Error)
 

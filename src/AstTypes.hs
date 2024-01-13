@@ -73,12 +73,12 @@ data Stmt =
     StmtWrite([Expr]) | 
     StmtRead([String]) |
     StmtLabeled(LabelType, Integer, Stmt) |
+    StmtNoop |
 
     StmtIntCompiledIf(Expr, Integer) |
     StmtAbsoluteGoto(LabelType, Integer) |
-    StmtComputedGoto([Integer], Expr) |
     StmtArithmeticIf(Expr, Integer, Integer, Integer) |
-    StmtNoop
+    StmtComputedGoto([Integer], Expr)
 
 instance Show Stmt where
     show (StmtIntCompiledIf(expr, label)) = "cif (" ++ (show expr) ++ ") -> " ++ (show label)
