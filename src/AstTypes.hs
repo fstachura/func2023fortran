@@ -2,7 +2,6 @@ module AstTypes (
     Expr(..),
     BinaryOp(..),
     UnaryOp(..),
-    GoToMap,
     StmtBlockType(..),
     LabelType(..),
     Stmt(..)
@@ -54,8 +53,6 @@ instance Show Expr where
     show (ExprBool(b)) = (show b)
     show (ExprIdentifier(str)) = str
 
-type GoToMap = (SimpleMap Integer [Stmt])
-
 data StmtBlockType = StmtBlockType([Stmt])
 
 instance Show StmtBlockType where
@@ -64,6 +61,7 @@ instance Show StmtBlockType where
 data IfBlockType = IfBlockType(Expr, StmtBlockType, Maybe IfBlockType)
 
 data LabelType = LabelExplicit | LabelIf | LabelDo
+    deriving(Eq, Ord)
 
 instance Show LabelType where
     show LabelExplicit = ""
@@ -71,18 +69,19 @@ instance Show LabelType where
     show LabelDo = "ldo"
 
 data Stmt = 
-    StmtIntCompiledIf(Expr, Integer) |
     StmtAssign(String, Expr) | 
-    StmtAbsoluteGoto(LabelType, Integer) |
-    StmtComputedGoto([Integer], Expr) |
-    StmtArithmeticIf(Expr, Integer, Integer, Integer) |
     StmtWrite([Expr]) | 
     StmtRead([String]) |
     StmtLabeled(LabelType, Integer, Stmt) |
+
+    StmtIntCompiledIf(Expr, Integer) |
+    StmtAbsoluteGoto(LabelType, Integer) |
+    StmtComputedGoto([Integer], Expr) |
+    StmtArithmeticIf(Expr, Integer, Integer, Integer) |
     StmtNoop
 
 instance Show Stmt where
-    show (StmtIntCompiledIf(expr, label)) = "cif (" ++ (show expr) ++ ") /-> " ++ (show label)
+    show (StmtIntCompiledIf(expr, label)) = "cif (" ++ (show expr) ++ ") -> " ++ (show label)
     show (StmtAssign(str, expr)) = str ++ " = " ++ (show expr)
     show (StmtAbsoluteGoto(t, label)) = "goto " ++ (show t) ++ " " ++ (show label)
     show (StmtComputedGoto(labels, expr)) = 

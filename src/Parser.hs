@@ -344,7 +344,7 @@ executionPart state =
     `altM` 
     (executableConstruct state)
 
--- if parser and flattener
+-- if parser and flattener (the most cursed thing in this project)
 
 matchIfPrelude state =
     (matchKeyword "if" state) >>=
@@ -367,7 +367,7 @@ ifConstruct state =
                             (matchKeywordOrFail "end" (skipSemicolons postBlockState)) >>=
                             (matchKeywordOrFail "if") >>= 
                             \(postIfState) ->
-                                (Right(StmtIntCompiledIf(condExpr, 
+                                (Right(StmtIntCompiledIf(ExprUn(UnOpNot, condExpr), 
                                         (lastIfLabel preIfBlockState)):ifStmts ++ 
                                         [StmtLabeled(LabelIf, (lastIfLabel preIfBlockState), StmtNoop)],
                                     postIfState))
@@ -380,7 +380,7 @@ ifConstruct state =
                                         (matchKeywordOrFail "if") >>= 
                                         \(postIfState) ->
                                             Right(
-                                                (StmtIntCompiledIf(condExpr, (lastIfLabel preIfBlockState)):ifStmts ++ [StmtAbsoluteGoto(LabelIf, (lastIfLabel postIfState)+1)])
+                                                (StmtIntCompiledIf(ExprUn(UnOpNot, condExpr), (lastIfLabel preIfBlockState)):ifStmts ++ [StmtAbsoluteGoto(LabelIf, (lastIfLabel postIfState)+1)])
                                                 ++ 
                                                 (StmtLabeled(LabelIf, (lastIfLabel preIfBlockState), fstElseStmt):elseStmts ++ [StmtLabeled(LabelIf, (lastIfLabel postIfState)+1, StmtNoop)]),
                                                 (advanceIfLabel postIfState))
@@ -390,7 +390,7 @@ ifConstruct state =
                                         (\result -> result >>= 
                                             \(fstElseIfStmt:elseIfStmts, postElseIfState) -> 
                                                 Right(
-                                                    (StmtIntCompiledIf(condExpr, (lastIfLabel preIfBlockState)):ifStmts ++ [StmtAbsoluteGoto(LabelIf, (lastIfLabel postElseIfState)+1)]
+                                                    (StmtIntCompiledIf(ExprUn(UnOpNot, condExpr), (lastIfLabel preIfBlockState)):ifStmts ++ [StmtAbsoluteGoto(LabelIf, (lastIfLabel postElseIfState)+1)]
                                                     ++
                                                     StmtLabeled(LabelIf, (lastIfLabel preIfBlockState), fstElseIfStmt):elseIfStmts ++ [StmtLabeled(LabelIf, (lastIfLabel postElseIfState)+1, StmtNoop)]),
                                                     (advanceIfLabel postElseIfState)))

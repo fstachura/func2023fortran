@@ -1,37 +1,91 @@
 module Eval (
     eval,
-    defaultEvalContext
+    evalContext
 ) where
 
+import System.IO
 import AstTypes
 import Map
+import Utils
+import GotoMap
 
-data Value = ValueInteger(Integer) | ValueString(String) | ValueFloat(Double) | ValueBool(Bool)
+data Value = 
+    ValueInteger(Integer) | 
+    ValueString(String) | 
+    ValueFloat(Double) | 
+    ValueBool(Bool)
     deriving(Show)
 
-data EvalError = EvalErrorUnknownVariable | EvalErrorUnmatchedTypes | EvalErrorInvalidOp | EvalErrorNotImplemented
+data EvalError = 
+    EvalErrorUnknownVariable(String) | 
+    EvalErrorUnmatchedTypes | 
+    EvalErrorInvalidOp | 
+    EvalErrorNotImplemented
     deriving(Show)
 
-data EvalContext = EvalContext { }
+type VariableMap = (SimpleMap String Value)
+
+data EvalContext = EvalContext { 
+    variableMap :: VariableMap,
+    gotoMap :: GotoMap
+}
     deriving(Show)
 
-defaultEvalContext = EvalContext {  }
+evalContext = EvalContext { 
+    variableMap=simpleMap,
+    gotoMap=simpleMap
+}
 
 type EvalResult = (Either EvalError Value)
+
+--execBlock :: EvalContext -> [Stmt] -> IO (Either EvalError EvalContext)
+--execBlock context stmts = do
+
+execStmt :: EvalContext -> Stmt -> IO (Either EvalError EvalContext)
+
+execStmt context (StmtLabeled(_, _, stmt)) = execStmt context stmt
+
+execStmt context (StmtAssign(name, expr)) = do
+    return $ (eval context expr) >>= \res ->
+        (return (evalContext { variableMap=(mapInsert name res (variableMap context)) }))
+
+execStmt context (StmtRead([])) = return $ return $ context
+
+--execStmt context (StmtRead(ids)) = do
+--    line <- readLine
+--
+--    (putStr $ show (eval context expr)) >>
+--    (execStmt context (StmtRead(ids)))
+
+execStmt context (StmtWrite(expr:exprs)) = 
+    (putStr $ show (eval context expr)) >>
+    (execStmt context (StmtWrite(exprs)))
+
+execStmt context (StmtWrite([])) = do
+    putStrLn ""
+    return (return context)
+
+execStmt context (StmtWrite(expr:exprs)) = 
+    (putStr $ show (eval context expr)) >>
+    (execStmt context (StmtWrite(exprs)))
+
+-- expression evaluation
 
 eval :: EvalContext -> Expr -> EvalResult
 
 eval ctx (ExprBin(a, op, b))    = handleBinaryEvalResults (eval ctx a) op (eval ctx b)
 eval ctx (ExprUn(op, a))        = handleUnaryEvalResult op (eval ctx a)
-eval ctx (ExprString(val))      = (Right(ValueString(val)))
-eval ctx (ExprInteger(val))     = (Right(ValueInteger(val)))
-eval ctx (ExprFloat(val))       = (Right(ValueFloat(val)))
-eval ctx (ExprBool(val))        = (Right(ValueBool(val)))
--- eval _ ExprIdentifier(String) = 
-
+eval _ (ExprString(val))      = (Right(ValueString(val)))
+eval _ (ExprInteger(val))     = (Right(ValueInteger(val)))
+eval _ (ExprFloat(val))       = (Right(ValueFloat(val)))
+eval _ (ExprBool(val))        = (Right(ValueBool(val)))
+eval ctx (ExprIdentifier(str)) = 
+    case (mapLookup str (variableMap ctx)) of
+        Just(val) -> (Right(val))
+        Nothing -> (Left(EvalErrorUnknownVariable(str)))
 
 handleBinaryEvalResults :: EvalResult -> BinaryOp -> EvalResult -> EvalResult
-handleBinaryEvalResults (Right a) op (Right b)            = evalBinary a op b 
+handleBinaryEvalResults (Right a) op (Right b)         = evalBinary a op b 
 handleBinaryEvalResults (Left err) _ _                 = (Left err)
 handleBinaryEvalResults _ _ (Left err)                 = (Left err)
 

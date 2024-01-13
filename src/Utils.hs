@@ -6,6 +6,7 @@ module Utils (
     digits,
     altM,
     altE,
+    foldME,
     strToLower
 ) where
 
@@ -20,6 +21,15 @@ altE _ b = b
 maybeOr :: b -> (a -> b) -> (Maybe a) -> b
 maybeOr _ f (Just(a)) = f a
 maybeOr b _ Nothing = b
+
+foldME :: (b -> c -> (Either a b)) -> b -> [c] -> (Either a b)
+foldME _ d [] = Right(d)
+foldME f d (e:el) = foldME' f (f d e) el
+
+foldME' :: (b -> c -> (Either a b)) -> (Either a b) -> [c] -> (Either a b)
+foldME' f (res@(Left _)) _ = res
+foldME' f (res@(Right b)) (e:el) = foldME' f (f b e) el
+foldME' f res [] = res
 
 --mapLeft :: (a -> c) -> Either a b -> c
 --mapLeft f (Left a)  = f a
