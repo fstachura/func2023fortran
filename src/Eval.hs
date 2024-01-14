@@ -6,49 +6,21 @@ module Eval (
 
 import System.IO
 import Debug.Trace
+import EvalTypes
+import BuiltinFunctions
 import AstTypes
 import Map
 import Utils
 import GotoMap
 
-data Value = 
-    ValueInteger(Integer) | 
-    ValueString(String) | 
-    ValueFloat(Double) | 
-    ValueBool(Bool)
-
-instance Show Value where
-    show (ValueInteger(i))   = show i
-    show (ValueString(s))    = s
-    show (ValueFloat(f))     = show f
-    show (ValueBool(b))      = show b
-
-data EvalError = 
-    EvalErrorUnknownVariable((Namespace, String)) | 
-    EvalErrorIncompatibleTypes | 
-    EvalErrorInvalidOp | 
-    EvalErrorLabelNotFound(Integer) | 
-    EvalErrorReading(String) | 
-    EvalErrorNotImplemented
-    deriving(Show)
-
-type VariableMap = (SimpleMap (Namespace, String) Value)
-
-data EvalContext = EvalContext { 
-    variableMap :: VariableMap,
-    gotoMap :: GotoMap
-}
-    deriving(Show)
+--execBlock :: EvalContext -> [Stmt] -> IO (Either EvalError EvalContext)
+--execBlock context stmts = do
 
 evalContext gotoMap = EvalContext { 
     variableMap=simpleMap,
-    gotoMap=gotoMap
+    gotoMap=gotoMap,
+    functionMap=defaultFunctionMap
 }
-
-type EvalResult = (Either EvalError Value)
-
---execBlock :: EvalContext -> [Stmt] -> IO (Either EvalError EvalContext)
---execBlock context stmts = do
 
 goto :: Namespace -> Integer -> EvalContext -> IO (Either EvalError EvalContext)
 goto t l context = do
@@ -108,12 +80,8 @@ execBlock context ((StmtArithmeticIf(expr, a, b, c)):stmts) = do
         Right(ifResult) -> 
             case (castToInt ifResult) of
                 Just(val) ->
-                    if val < 0 then     
-                        goto NamespaceVisible a context
-                    else if val == 0 then
-                        goto NamespaceVisible b context
-                    else 
-                        goto NamespaceVisible c context
+                    let label = if val < 0 then a else if val == 0 then b else c in
+                    goto NamespaceVisible label context
                 Nothing -> return $ Left(EvalErrorIncompatibleTypes)
         Left(err) -> return $ Left(err)
 
@@ -144,8 +112,10 @@ execBlock context (StmtRead(vars):stmts) = do
         Left(err) -> return $ Left(err)
 
 execBlock context (StmtWrite(exprs):stmts) = do
-    execWrite context exprs
-    execBlock context stmts
+    (execWrite context exprs) >>=
+        \val -> case val of
+            Right(_) -> execBlock context stmts
+            Left(err) -> return $ Left(err)
 
 execBlock context (StmtNoop:stmts) = execBlock context stmts
 
@@ -194,6 +164,21 @@ eval ctx (ExprIdentifier(var)) =
     case (mapLookup var (variableMap ctx)) of
         Just(val) -> (Right(val))
         Nothing -> (Left(EvalErrorUnknownVariable(var)))
+eval ctx (ExprCall(fun, args)) =
+    case (mapLookup fun (functionMap ctx))  of
+        Just(f) -> (mapM (eval ctx) args) >>= 
+                   \evalArgs -> f evalArgs ctx
+        Nothing -> (Left(EvalErrorUnknownFunction(fun)))
+
+--evalArgsList :: EvalContext -> [Expr] -> (Either EvalError ([Value], EvalContext))
+--evalArgsList ctx (expr:exprs) = 
+--    (eval ctx expr) >>= 
+--    \(val, postEvalCtx) -> 
+--        case (evalArgsList postEvalCtx exprs) of 
+--            Right(values, postEvalArgsListCtx) -> Right $ (val:values, postEvalArgsListCtx)
+--            Left(err) -> Left(err)
+--
+--evalArgsList ctx [] = Right $ ([], ctx)
 
 handleBinaryEvalResults :: EvalResult -> BinaryOp -> EvalResult -> EvalResult
 handleBinaryEvalResults (Right a) op (Right b)         = evalBinary a op b 

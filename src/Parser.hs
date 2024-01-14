@@ -200,50 +200,34 @@ parseUnaryLeftLoop f tokens orgState =
         (matchToken tokens orgState)
     where res = (f orgState)
 
--- match an expression list beginning with a comma
-exprList :: ParserState -> (Either ParserError ([Expr], ParserState))
-exprList orgState =
-    maybeOr
-        (Right([], orgState))
-        (\state -> 
-            (expression state) >>=
-                \res@(expr, state) ->
-                    (exprList state) >>=
-                        \(exprs, state) -> 
-                            (Right(expr:exprs, state))
-        ) 
-        (matchToken [TokenComma] orgState)
-
--- match an integer list beginning with an integer
-integerList :: ParserState -> (Either ParserError ([Integer], ParserState))
-integerList state = 
-    (matchIntegerOrFail state) >>=
-    \(integer, state) -> 
-        maybeOr
-            (Right([integer], state))
-            (\state ->
-                (integerList state) >>=
-                \(intList, state) ->
-                    (Right(integer:intList, state))
-            )
-            (matchToken [TokenComma] state)
-
+-- advance expr parse result
 advanceResult :: ExprParseResult -> ExprParseResult
 advanceResult = (flip (>>=)) (\(expr, state) -> Right(expr, (advanceParser state)))
 
--- match an integer list beginning with a comma
+-- list matchers
+
+exprList :: ParserState -> (Either ParserError ([Expr], ParserState))
+exprList = matchList expression
+
+integerList :: ParserState -> (Either ParserError ([Integer], ParserState))
+integerList = matchList matchIntegerOrFail
+
 identifierList :: ParserState -> (Either ParserError ([String], ParserState))
-identifierList orgState =
-    maybeOr
-        (Right([], orgState))
-        (\state -> 
-            (matchIdentifierOrFail state) >>=
-                \res@(str, state) ->
-                    (identifierList state) >>=
-                        \(strs, state) -> 
-                            (Right(str:strs, state))
-        ) 
-        (matchToken [TokenComma] orgState)
+identifierList = matchList matchIdentifierOrFail
+
+matchList :: (ParserState -> (Either ParserError (a, ParserState))) 
+            -> ParserState -> (Either ParserError ([a], ParserState))
+
+matchList f orgState =
+    (f orgState) >>=
+    \(el, postElState) ->
+        maybeOr
+            (Right([el], postElState))
+            (\postCommaState -> 
+                (matchList f postCommaState) >>=
+                \(elList, postElListState) ->
+                    (Right(el:elList, postElListState)))
+            (matchToken [TokenComma] postElState)
 
 type ExprParsingFunction                = ParserState -> ExprParseResult
 type StmtParsingFunction                = ParserState -> StmtParseResult
@@ -283,13 +267,27 @@ multOperand     = parseBinaryRightLoop level1Expr [TokenPow] multOperand
 level1Expr      = parseUnaryLeftLoop primary unaryOperators
 -- TODO calls
 
+functionCall state = 
+    (matchIdentifierOrFail state) >>=
+    \(id, postIdState) ->
+        (matchTokenOrFail TokenLeftParen postIdState) >>=
+        (exprList) >>=
+        \(exprList, postExprListState) ->
+            (matchTokenOrFail TokenRightParen postExprListState) >>=
+            \postRightParenState ->
+                (Right(ExprCall(id, exprList), postRightParenState))
+
 primary state@ParserState { tokensLeft=(twi@TokenWithInfo{token=t}:ts) } = 
     case t of
         TokenString(s) -> Right(ExprString(s), advanceParser state) 
         TokenInteger(i) -> Right(ExprInteger(i), advanceParser state)
         TokenFloat(f) -> Right(ExprFloat(f), advanceParser state)
         TokenBool(b) -> Right(ExprBool(b), advanceParser state)
-        TokenIdentifier(i) -> Right(ExprIdentifier(NamespaceVisible, i), advanceParser state)
+        TokenIdentifier(i) -> 
+            maybeOr
+                (Right(ExprIdentifier(NamespaceVisible, i), advanceParser state))
+                (\_ -> functionCall state)
+                (matchToken [TokenLeftParen] (advanceParser state))
         TokenLeftParen -> (expression $ advanceParser state) >>=
             \x -> case x of
                 (expr,
@@ -545,21 +543,25 @@ actionStmt state =
         \result -> Just $ result >>=
             \(stmt, state) -> (Right([stmt], state))
 
-readStmt state = 
-    (matchKeyword "read" state) >>= 
-    \state -> Just $
-        (matchFormat state) >>=
-        identifierList >>=
-            \(exprs, state) ->
-                (Right(StmtRead(exprs), state))
+readStmt = matchIOStmt "read" StmtRead matchIdentifierOrFail
 
-writeStmt state = 
-    (matchKeyword "write" state) >>= 
+writeStmt = matchIOStmt "write" StmtWrite expression
+
+matchIOStmt :: String -> ([a] -> Stmt) -> 
+               (ParserState -> (Either ParserError (a, ParserState))) -> 
+               ParserState -> OptionalStmtParseResult
+matchIOStmt keyword constr listParser state = 
+    (matchKeyword keyword state) >>= 
     \state -> Just $
         (matchFormat state) >>=
-        exprList >>=
-            \(exprs, state) ->
-                (Right(StmtWrite(exprs), state))
+        \postFormatState ->
+            maybeOr
+                (Right(constr([]), postFormatState))
+                (\postCommaState ->
+                    (matchList listParser postCommaState) >>=
+                    \(exprList, postExprListState) ->
+                        (Right(constr(exprList), postExprListState)))
+                (matchToken [TokenComma] postFormatState)
  
 matchFormat state = 
     (matchTokenOrFail TokenLeftParen state)    >>=

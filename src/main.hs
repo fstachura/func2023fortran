@@ -32,8 +32,13 @@ main = do
                             execResult >>=
                                 \result ->
                                     case result of
-                                        Left(err) -> putStrLn $ show $ err
-                                        Right(_) -> return ()
+                                        Left(err) -> do
+                                            putStrLn ""
+                                            putStrLn $ show $ err
+                                            return ()
+                                        Right(_) -> do
+                                            putStrLn "ok"
+                                            return ()
                         Left(_) -> do
                             mapM_ putStrLn (map (show . token) (fst tokens))
                             putStrLn $ show $ parsed

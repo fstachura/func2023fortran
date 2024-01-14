@@ -42,7 +42,8 @@ data Expr =
     ExprInteger(Integer) |
     ExprFloat(Double) |
     ExprBool(Bool) |
-    ExprIdentifier(Namespace, String)
+    ExprIdentifier(Namespace, String) | 
+    ExprCall(String, [Expr])
 
 instance Show Expr where
     show (ExprBin(a, op, b)) = "(" ++ (show a) ++ " " ++ (show op) ++ " " ++ (show b) ++ ")"
