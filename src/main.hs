@@ -22,18 +22,24 @@ main = do
         withFile filename ReadMode $ \h -> do
             src <- (hGetContents h)
             let tokens = (lexFull defaultLexerState src)
-            mapM_ putStrLn (map (show . token) (fst tokens))
-            putStrLn (show (snd tokens))
             case (snd tokens) of
                 Ok -> 
                     let parsed = (program $ newParserState $ fst tokens) in
                     case parsed of 
                         Right(StmtBlockType(stmts), _) -> do
+                            --putStrLn $ show $ parsed
                             let execResult = (execBlock (evalContext (createGotoMap stmts simpleMap)) stmts) 
                             execResult >>=
-                                putStrLn . show 
-                        Left(_) -> putStrLn $ show $ parsed
-                Error ->
+                                \result ->
+                                    case result of
+                                        Left(err) -> putStrLn $ show $ err
+                                        Right(_) -> return ()
+                        Left(_) -> do
+                            mapM_ putStrLn (map (show . token) (fst tokens))
+                            putStrLn $ show $ parsed
+                            putStrLn "parsing error"
+                Error -> do
+                    mapM_ putStrLn (map (show . token) (fst tokens))
                     putStrLn "lexing error"
 
             --case parsed of

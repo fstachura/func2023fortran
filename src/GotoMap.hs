@@ -6,7 +6,7 @@ module GotoMap (
 import AstTypes
 import Map
 
-type GotoMap = (SimpleMap (LabelType, Integer) [Stmt])
+type GotoMap = (SimpleMap (Namespace, Integer) [Stmt])
 
 createGotoMap :: [Stmt] -> GotoMap -> GotoMap
 createGotoMap [] = id

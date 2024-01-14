@@ -24,14 +24,15 @@ instance Show Value where
     show (ValueBool(b))      = show b
 
 data EvalError = 
-    EvalErrorUnknownVariable(String) | 
+    EvalErrorUnknownVariable((Namespace, String)) | 
     EvalErrorIncompatibleTypes | 
     EvalErrorInvalidOp | 
     EvalErrorLabelNotFound(Integer) | 
+    EvalErrorReading(String) | 
     EvalErrorNotImplemented
     deriving(Show)
 
-type VariableMap = (SimpleMap String Value)
+type VariableMap = (SimpleMap (Namespace, String) Value)
 
 data EvalContext = EvalContext { 
     variableMap :: VariableMap,
@@ -49,19 +50,50 @@ type EvalResult = (Either EvalError Value)
 --execBlock :: EvalContext -> [Stmt] -> IO (Either EvalError EvalContext)
 --execBlock context stmts = do
 
-goto :: LabelType -> Integer -> EvalContext -> IO (Either EvalError EvalContext)
+goto :: Namespace -> Integer -> EvalContext -> IO (Either EvalError EvalContext)
 goto t l context = do
     case (mapLookup (t, l) (gotoMap context)) of
         Just(res) -> execBlock context res
         Nothing -> return (Left(EvalErrorLabelNotFound(l)))
 
+skipSpaces (' ':rest) = rest
+skipSpaces rest = rest
+
+validateInt :: String -> Bool
+validateInt = foldl (\acc el -> acc && elem el digits) True
+
+validateFloat :: String -> Bool
+validateFloat str = 
+    (foldl (\acc el -> if (el == '.') then acc+1 else acc) 0 str) <= 1 &&
+    (foldl (\acc el -> acc && elem el (digits ++ ".")) True str)
+
+readVariables :: [String] -> String -> (Either EvalError ([(String, Value)], [String]))
+readVariables (var:vars) str =
+    let (cur, rest) = (break (== ' ') (skipSpaces str))
+        firstChar = (strToLower (take 1 var))
+        skipped = (skipSpaces cur)
+    in
+    if (length cur) == 0 then
+        (Right([], var:vars))
+    else 
+        (readVariables vars rest) >>= 
+        \(vals, leftVars) ->
+            if (firstChar `elem` ["i", "j", "k", "l", "m"] && validateInt skipped) then
+                Right $ ((var, ValueInteger(read skipped)):vals, leftVars)
+            else if validateFloat skipped then
+                Right $ ((var, ValueFloat(read skipped)):vals, leftVars)
+            else
+                Left $ EvalErrorReading $ cur
+
+readVariables [] str = Right $ ([], [])
+
 execBlock :: EvalContext -> [Stmt] -> IO (Either EvalError EvalContext)
 
-execBlock context ((StmtIntCompiledIf(expr, label)):stmts) = do
+execBlock context ((StmtIntCompiledIf(expr, namespace, label)):stmts) = do
     case (eval context expr) of
         Right(ifResult) -> 
             if (truthy ifResult) then 
-                goto LabelIf label context
+                goto namespace label context
             else
                 execBlock context stmts
         Left(err) -> return $ Left(err)
@@ -77,11 +109,11 @@ execBlock context ((StmtArithmeticIf(expr, a, b, c)):stmts) = do
             case (castToInt ifResult) of
                 Just(val) ->
                     if val < 0 then     
-                        goto LabelExplicit a context
+                        goto NamespaceVisible a context
                     else if val == 0 then
-                        goto LabelExplicit b context
+                        goto NamespaceVisible b context
                     else 
-                        goto LabelExplicit c context
+                        goto NamespaceVisible c context
                 Nothing -> return $ Left(EvalErrorIncompatibleTypes)
         Left(err) -> return $ Left(err)
 
@@ -93,7 +125,7 @@ execBlock context ((StmtComputedGoto(labels, expr)):stmts) = do
                     if (fromIntegral (val-1)) >= (length labels) || (fromIntegral (val-1)) <= 0 then
                         execBlock context stmts
                     else 
-                        goto LabelExplicit (labels !! (fromIntegral (val-1))) context
+                        goto NamespaceVisible (labels !! (fromIntegral (val-1))) context
                 Nothing -> return $ Left(EvalErrorIncompatibleTypes)
         Left(err) -> return $ Left(err)
 
@@ -105,7 +137,11 @@ execBlock context ((StmtAssign(name, expr)):stmts) = do
             (execBlock (context { variableMap=(mapInsert name res (variableMap context)) }) stmts)
         Left(err) -> return $ Left $ err
 
-execBlock context (StmtRead(_):stmts) = execBlock context stmts
+execBlock context (StmtRead(vars):stmts) = do
+    result <- execRead context vars 
+    case result of 
+        Right(context) -> execBlock context stmts
+        Left(err) -> return $ Left(err)
 
 execBlock context (StmtWrite(exprs):stmts) = do
     execWrite context exprs
@@ -115,17 +151,29 @@ execBlock context (StmtNoop:stmts) = execBlock context stmts
 
 execBlock context [] = return $ Right $ context
 
---execStmt context (StmtRead(ids)) = do
---    line <- readLine
---
---    (putStr $ show (eval context expr)) >>
---    (execStmt context (StmtRead(ids)))
+applyVariables :: [(String, Value)] -> VariableMap -> VariableMap
+applyVariables vars vmap = foldl (\acc (k,v) -> mapInsert (NamespaceVisible, k) v acc) vmap vars
+
+execRead :: EvalContext -> [String] -> IO (Either EvalError EvalContext)
+execRead context vars = do
+    line <- getLine
+    case readVariables vars line of
+        Right(values, left) -> 
+            let newContext = context{ variableMap=(applyVariables values (variableMap context)) } in
+            if (length left) == 0 then
+                return $ Right $ newContext 
+            else
+                execRead newContext left
+        Left(err) -> return $ Left $ err
 
 execWrite :: EvalContext -> [Expr] -> IO (Either EvalError EvalContext)
 
 execWrite context (expr:exprs) = 
     case (eval context expr) of
-        Right(res) -> (putStr $ show $ res) >> (execWrite context exprs)
+        Right(res) -> do
+            putStr $ show $ res
+            putStr " "
+            execWrite context exprs
         Left(err) -> return $ Left $ err
 
 execWrite context [] = do
@@ -142,10 +190,10 @@ eval _ (ExprString(val))      = (Right(ValueString(val)))
 eval _ (ExprInteger(val))     = (Right(ValueInteger(val)))
 eval _ (ExprFloat(val))       = (Right(ValueFloat(val)))
 eval _ (ExprBool(val))        = (Right(ValueBool(val)))
-eval ctx (ExprIdentifier(str)) = 
-    case (mapLookup str (variableMap ctx)) of
+eval ctx (ExprIdentifier(var)) = 
+    case (mapLookup var (variableMap ctx)) of
         Just(val) -> (Right(val))
-        Nothing -> (Left(EvalErrorUnknownVariable(str)))
+        Nothing -> (Left(EvalErrorUnknownVariable(var)))
 
 handleBinaryEvalResults :: EvalResult -> BinaryOp -> EvalResult -> EvalResult
 handleBinaryEvalResults (Right a) op (Right b)         = evalBinary a op b 

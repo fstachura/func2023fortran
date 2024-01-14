@@ -3,7 +3,7 @@ module AstTypes (
     BinaryOp(..),
     UnaryOp(..),
     StmtBlockType(..),
-    LabelType(..),
+    Namespace(..),
     Stmt(..)
 ) where
 
@@ -42,7 +42,7 @@ data Expr =
     ExprInteger(Integer) |
     ExprFloat(Double) |
     ExprBool(Bool) |
-    ExprIdentifier(String)
+    ExprIdentifier(Namespace, String)
 
 instance Show Expr where
     show (ExprBin(a, op, b)) = "(" ++ (show a) ++ " " ++ (show op) ++ " " ++ (show b) ++ ")"
@@ -51,7 +51,7 @@ instance Show Expr where
     show (ExprInteger(int)) = (show int)
     show (ExprFloat(f)) = (show f)
     show (ExprBool(b)) = (show b)
-    show (ExprIdentifier(str)) = str
+    show (ExprIdentifier(n, str)) = (show n) ++ ":" ++ str
 
 data StmtBlockType = StmtBlockType([Stmt])
 
@@ -60,29 +60,30 @@ instance Show StmtBlockType where
     
 data IfBlockType = IfBlockType(Expr, StmtBlockType, Maybe IfBlockType)
 
-data LabelType = LabelExplicit | LabelIf | LabelDo
+data Namespace = NamespaceVisible | NamespaceIf | NamespaceDo
     deriving(Eq, Ord)
 
-instance Show LabelType where
-    show LabelExplicit = ""
-    show LabelIf = "lif"
-    show LabelDo = "ldo"
+instance Show Namespace where
+    show NamespaceVisible = "nex"
+    show NamespaceIf = "nif"
+    show NamespaceDo = "ndo"
 
 data Stmt = 
-    StmtAssign(String, Expr) | 
+    StmtAssign((Namespace, String), Expr) | 
     StmtWrite([Expr]) | 
     StmtRead([String]) |
-    StmtLabeled(LabelType, Integer, Stmt) |
+    StmtLabeled(Namespace, Integer, Stmt) |
     StmtNoop |
 
-    StmtIntCompiledIf(Expr, Integer) |
-    StmtAbsoluteGoto(LabelType, Integer) |
+    StmtIntCompiledIf(Expr, Namespace, Integer) |
+    StmtAbsoluteGoto(Namespace, Integer) |
     StmtArithmeticIf(Expr, Integer, Integer, Integer) |
     StmtComputedGoto([Integer], Expr)
 
 instance Show Stmt where
-    show (StmtIntCompiledIf(expr, label)) = "cif (" ++ (show expr) ++ ") -> " ++ (show label)
-    show (StmtAssign(str, expr)) = str ++ " = " ++ (show expr)
+    show (StmtIntCompiledIf(expr, namespace, label)) = "cif (" ++ (show expr) ++ ") -> " ++ 
+        (show namespace) ++ ":" ++ (show label)
+    show (StmtAssign((n, str), expr)) = (show n) ++ ":" ++ str ++ " = " ++ (show expr)
     show (StmtAbsoluteGoto(t, label)) = "goto " ++ (show t) ++ " " ++ (show label)
     show (StmtComputedGoto(labels, expr)) = 
         "goto (" ++ 

@@ -13,7 +13,8 @@ import Debug.Trace
 data ParserState = ParserState {
     tokensLeft :: [TokenWithInfo],
     previousToken :: Maybe(TokenWithInfo),
-    lastIfLabel :: Integer
+    lastIfLabel :: Integer,
+    lastDoVarNum :: Integer
 }
     deriving (Show)
 
@@ -25,6 +26,7 @@ data ParserError =
     ParserErrorExpectedInteger(TokenWithInfo) | 
     ParserErrorExpectedBlock(TokenWithInfo) | 
     ParserErrorExpectedIfConstruct(TokenWithInfo) | 
+    ParserErrorExpectedAssignment(TokenWithInfo) | 
     ParserErrorUnexpectedToken(TokenWithInfo) | 
     ParserErrorUnknown(TokenWithInfo) | 
     ParserErrorDuplicateLabel(TokenWithInfo, Integer) |
@@ -40,7 +42,8 @@ type OptionalStmtParseResult        = Maybe (Either (ParserError) (Stmt, ParserS
 newParserState tokens = ParserState { 
     tokensLeft=tokens, 
     previousToken=Nothing,
-    lastIfLabel=0
+    lastIfLabel=0,
+    lastDoVarNum=0
 }
 
 currentToken ParserState { tokensLeft=(TokenWithInfo{token=t}:_) } = t
@@ -53,6 +56,10 @@ advanceParser state@ParserState{ tokensLeft=(t:ts) } = state {
 
 advanceIfLabel state@ParserState { lastIfLabel=l } = state {
     lastIfLabel=(l+1)
+}
+
+advanceDoVarNum state@ParserState { lastDoVarNum=l } = state {
+    lastDoVarNum=(l+1)
 }
 
 tokenToBinaryOp :: Token -> Maybe(BinaryOp)
@@ -267,13 +274,13 @@ expression      = equivalence
 equivalence     = parseBinaryRightLoop equivOperand equivOperators equivOperand
 equivOperand    = parseBinaryRightLoop orOperand [TokenOr] orOperand
 orOperand       = parseBinaryRightLoop andOperand [TokenAnd] andOperand
-andOperand      = parseUnaryLeftLoop level4Expr [TokenNot]
+andOperand      = parseUnaryLeftLoop level4Expr unaryOperators
 level4Expr      = parseBinaryLeftLoop level2Expr relOperators 
 -- TODO addOperand loop (?)
 level2Expr      = parseBinaryLeftLoop addOperand addOperators
 addOperand      = parseBinaryRightLoop multOperand multOperators addOperand
 multOperand     = parseBinaryRightLoop level1Expr [TokenPow] multOperand
-level1Expr      = parseUnaryLeftLoop primary [TokenNot]
+level1Expr      = parseUnaryLeftLoop primary unaryOperators
 -- TODO calls
 
 primary state@ParserState { tokensLeft=(twi@TokenWithInfo{token=t}:ts) } = 
@@ -282,7 +289,7 @@ primary state@ParserState { tokensLeft=(twi@TokenWithInfo{token=t}:ts) } =
         TokenInteger(i) -> Right(ExprInteger(i), advanceParser state)
         TokenFloat(f) -> Right(ExprFloat(f), advanceParser state)
         TokenBool(b) -> Right(ExprBool(b), advanceParser state)
-        TokenIdentifier(i) -> Right(ExprIdentifier(i), advanceParser state)
+        TokenIdentifier(i) -> Right(ExprIdentifier(NamespaceVisible, i), advanceParser state)
         TokenLeftParen -> (expression $ advanceParser state) >>=
             \x -> case x of
                 (expr,
@@ -341,7 +348,7 @@ executionPart state =
         \state -> Just $ 
             state >>= 
             \(stmt:stmts, state) -> 
-                Right(StmtLabeled(LabelExplicit, label, stmt):stmts, state)) 
+                Right(StmtLabeled(NamespaceVisible, label, stmt):stmts, state)) 
     `altM` 
     (executableConstruct state)
 
@@ -352,54 +359,125 @@ matchIfPrelude state =
     \postIfKeywordState -> Just $
         (matchTokenOrFail TokenLeftParen postIfKeywordState) >>=
         (expression) >>=
-        (\(condExpr, state) ->
+        \(condExpr, state) ->
             (matchTokenOrFail TokenRightParen state) >>=
             (matchKeywordOrFail "then") >>=
-            \state -> Right(condExpr, state))
+            \state -> Right(condExpr, state)
+
+matchIfEnd state = 
+    (matchKeywordOrFail "end" (skipSemicolons state)) >>= (matchKeywordOrFail "if")
+
+compileSimpleIf condExpr label ifStmts = 
+    StmtIntCompiledIf(ExprUn(UnOpNot, condExpr), NamespaceIf, label):ifStmts ++ 
+        [StmtLabeled(NamespaceIf, label, StmtNoop)]
+
+compileElseIf condExpr preIfLabel ifStmts postIfLabel (fstElseStmt:elseStmts) = 
+    (StmtIntCompiledIf(ExprUn(UnOpNot, condExpr), NamespaceIf, preIfLabel):ifStmts ++ 
+        [StmtAbsoluteGoto(NamespaceIf, postIfLabel)]) ++
+    (StmtLabeled(NamespaceIf, preIfLabel, fstElseStmt):elseStmts ++ 
+        [StmtLabeled(NamespaceIf, postIfLabel, StmtNoop)])
 
 ifConstruct state = 
     (matchIfPrelude state) >>=
     \result -> Just $ result >>=
-        (\(condExpr, preIfBlockState) ->
+        \(condExpr, preIfBlockState) ->
             (block (advanceIfLabel preIfBlockState)) >>=
-                \(StmtBlockType(ifStmts), postBlockState) ->
-                    case (matchKeyword "else" (skipSemicolons postBlockState)) of
-                        Nothing -> 
-                            (matchKeywordOrFail "end" (skipSemicolons postBlockState)) >>=
-                            (matchKeywordOrFail "if") >>= 
-                            \(postIfState) ->
-                                (Right(StmtIntCompiledIf(ExprUn(UnOpNot, condExpr), 
-                                        (lastIfLabel preIfBlockState)):ifStmts ++ 
-                                        [StmtLabeled(LabelIf, (lastIfLabel preIfBlockState), StmtNoop)],
-                                    postIfState))
-                        Just(postElseState) -> 
-                            case (matchKeywordWithoutAdvance "if" $ skipSemicolons postElseState) of
-                                Nothing ->  
-                                    (block postElseState) >>=
-                                    \(StmtBlockType(fstElseStmt:elseStmts), postElseState) ->
-                                        (matchKeywordOrFail "end" $ skipSemicolons postElseState) >>=
-                                        (matchKeywordOrFail "if") >>= 
-                                        \(postIfState) ->
-                                            Right(
-                                                (StmtIntCompiledIf(ExprUn(UnOpNot, condExpr), (lastIfLabel preIfBlockState)):ifStmts ++ [StmtAbsoluteGoto(LabelIf, (lastIfLabel postIfState)+1)])
-                                                ++ 
-                                                (StmtLabeled(LabelIf, (lastIfLabel preIfBlockState), fstElseStmt):elseStmts ++ [StmtLabeled(LabelIf, (lastIfLabel postIfState)+1, StmtNoop)]),
+            \(StmtBlockType(ifStmts), postBlockState) ->
+                case (matchKeyword "else" (skipSemicolons postBlockState)) of
+                    Nothing -> 
+                        (matchIfEnd postBlockState) >>=
+                        \(postIfState) -> 
+                            Right $ (compileSimpleIf 
+                                        condExpr 
+                                        (lastIfLabel preIfBlockState) 
+                                        ifStmts,
+                                    postIfState)
+                    Just(postElseState) -> 
+                        case (matchKeywordWithoutAdvance "if" $ skipSemicolons postElseState) of
+                            Nothing ->  
+                                (block postElseState) >>=
+                                \(StmtBlockType(elseStmts), postElseState) ->
+                                    (matchIfEnd postBlockState) >>=
+                                    \(postIfState) ->
+                                        Right $ (compileElseIf
+                                                    condExpr
+                                                    (lastIfLabel preIfBlockState)
+                                                    ifStmts
+                                                    ((lastIfLabel postIfState)+1)
+                                                    elseStmts,
                                                 (advanceIfLabel postIfState))
-                                Just(preNewIfState) -> 
-                                    maybeOr
-                                        (Left(ParserErrorExpectedIfConstruct((currentTokenWithInfo preNewIfState))))
-                                        (\result -> result >>= 
-                                            \(fstElseIfStmt:elseIfStmts, postElseIfState) -> 
-                                                Right(
-                                                    (StmtIntCompiledIf(ExprUn(UnOpNot, condExpr), (lastIfLabel preIfBlockState)):ifStmts ++ [StmtAbsoluteGoto(LabelIf, (lastIfLabel postElseIfState)+1)]
-                                                    ++
-                                                    StmtLabeled(LabelIf, (lastIfLabel preIfBlockState), fstElseIfStmt):elseIfStmts ++ [StmtLabeled(LabelIf, (lastIfLabel postElseIfState)+1, StmtNoop)]),
+                            Just(preNewIfState) -> 
+                                maybeOr
+                                    (Left $ ParserErrorExpectedIfConstruct $ 
+                                        (currentTokenWithInfo preNewIfState))
+                                    (\result -> result >>= 
+                                        \(fstElseStmts, postElseIfState) -> 
+                                            Right $ (compileElseIf
+                                                        condExpr
+                                                        (lastIfLabel preIfBlockState)
+                                                        ifStmts 
+                                                        ((lastIfLabel postElseIfState)+1)
+                                                        fstElseStmts,
                                                     (advanceIfLabel postElseIfState)))
-                                        (ifConstruct preNewIfState))
+                                    (ifConstruct preNewIfState)
 
-doConstruct state = Nothing
---loopControl = expression
---block = expression
+tryMatchIncrement postLimitState =
+    case (matchToken [TokenComma] postLimitState) of
+        Nothing ->
+            (Right((ExprInteger(1)), postLimitState))
+        Just(postLimitCommaState) ->
+            (expression postLimitCommaState) >>=
+            \(incrementExpr, postIncrementState) ->
+                (Right(incrementExpr, postIncrementState))
+
+doConstruct state = 
+    (matchKeyword "do" state) >>=
+    \postDoKeywordState -> 
+        let crttoken      = (currentTokenWithInfo postDoKeywordState)
+            assignmentErr = Just $ Left $ ParserErrorExpectedAssignment(crttoken) in
+        ((assignmentStmt postDoKeywordState) `altM` assignmentErr) >>=
+        \result -> Just $ result >>=
+            \(assignment, postAssignmentState) -> 
+                case assignment of 
+                    StmtAssign(var, expr) ->
+                        (matchTokenOrFail TokenComma postAssignmentState) >>=
+                        (expression) >>=
+                        \(limitExpr, postLimitState) ->
+                            (tryMatchIncrement postLimitState) >>=
+                            \(incExpr, postIncrementState) ->
+                                let doNum           = (lastDoVarNum state) 
+                                    doEndNum        = (lastDoVarNum state) + 1
+                                    doLimit         = (NamespaceDo, "l" ++ (show doNum))
+                                    doInc           = (NamespaceDo, "i" ++ (show doNum)) 
+                                    postLblState    = (advanceDoVarNum (advanceDoVarNum postIncrementState)) in
+                                (block postLblState) >>=
+                                \(StmtBlockType(fstDoBlock:doBlock), postBlockState) ->
+                                    (matchKeywordOrFail "end" (skipSemicolons postBlockState)) >>=
+                                    (matchKeywordOrFail "do") >>=
+                                    \(postDoStatementState) -> 
+                                        Right $ (
+                                            assignment:
+                                            StmtAssign(doLimit, limitExpr):
+                                            StmtAssign(doInc, incExpr):
+                                            StmtLabeled(NamespaceDo, doNum, fstDoBlock):
+                                            doBlock ++
+                                            StmtIntCompiledIf(
+                                                ExprBin(
+                                                    (ExprIdentifier(var)),
+                                                    BinOpGeq,
+                                                    (ExprIdentifier(doLimit))),
+                                                NamespaceDo,
+                                                doEndNum):
+                                            StmtAssign(
+                                                var,
+                                                ExprBin(
+                                                    (ExprIdentifier(var)), 
+                                                    BinOpAdd, 
+                                                    (ExprIdentifier(doInc)))):
+                                            StmtAbsoluteGoto(NamespaceDo, doNum):
+                                            StmtLabeled(NamespaceDo, doEndNum, StmtNoop):[],
+                                        postDoStatementState)
+                    _ -> Left(ParserErrorUnknown(currentTokenWithInfo postAssignmentState))
 
 executableConstruct state = 
     (actionStmt state)  `altM`
@@ -415,7 +493,7 @@ gotoStmt state =
     \state -> Just $
         (matchIntegerOrFail state) >>=
         \(label, state) ->
-            Right(StmtAbsoluteGoto(LabelExplicit, label), state)
+            Right(StmtAbsoluteGoto(NamespaceVisible, label), state)
 
 -- TODO optional comma after list
 computedGotoStmt state = 
@@ -454,7 +532,7 @@ assignmentStmt state =
         (matchToken [TokenEq] state) >>=
         \state -> Just $
             (expression state) >>=
-            (\(expr, state) -> Right(StmtAssign(id, expr), state))
+            (\(expr, state) -> Right(StmtAssign((NamespaceVisible, id), expr), state))
             
 
 actionStmt state = 
