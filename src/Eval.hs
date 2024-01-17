@@ -31,12 +31,21 @@ goto t l context = do
 skipSpaces (' ':rest) = rest
 skipSpaces rest = rest
 
+validateSign :: String -> Bool
+validateSign (s:str) = 
+    let n = (count ((flip elem) "+-") (s:str)) in
+    if n == 0 then True
+    else if (n == 1 && (s `elem` "+-")) then True
+    else False
+
 validateInt :: String -> Bool
-validateInt = foldl (\acc el -> acc && elem el digits) True
+validateInt str = 
+    (validateSign str) &&
+    (foldl (\acc el -> acc && elem el digits) True str)
 
 validateFloat :: String -> Bool
 validateFloat str = 
-    (foldl (\acc el -> if (el == '.') then acc+1 else acc) 0 str) <= 1 &&
+    (validateSign str) &&
     (foldl (\acc el -> acc && elem el (digits ++ ".")) True str)
 
 readVariables :: [String] -> String -> (Either EvalError ([(String, Value)], [String]))

@@ -10,7 +10,8 @@ module Utils (
     nothingOnLeft,
     leftOnNothing,
     flattenME,
-    strToLower
+    strToLower,
+    count
 ) where
 
 altM :: (Maybe a) -> (Maybe a) -> (Maybe a)
@@ -49,6 +50,11 @@ flattenME a Nothing  = Left $ a
 --mapLeft :: (a -> c) -> Either a b -> c
 --mapLeft f (Left a)  = f a
 --mapLeft _ b         = b
+
+count :: (a -> Bool) -> [a] -> Int
+count f = foldl (\acc el -> if (f el) then acc+1 else acc) 0
+
+-- string utils
 
 lowercaseLetters = "abcdefghijklmnoprstquwxyz"
 uppercaseLetters = "ABCDEFGHIJKLMNOPRSTQUWXYZ"
