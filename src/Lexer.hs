@@ -53,9 +53,9 @@ matchDotToken _ = Nothing
 ---- TODO consume -/+
 ---- attempts to consume an integer or a float, returns Nothing on failure
 lexNumber :: String -> Maybe(Token, String, LexerStateUpdate)
-lexNumber str = 
-    (lexWhile digits str) >>=
-    \result -> case result of
+lexNumber str = do
+    result <- lexWhile digits str
+    case result of
         (a, '.':rs) -> 
             ((lexWhile digits rs) >>= 
                 \(b, rs) -> Just(TokenFloat(
@@ -65,7 +65,7 @@ lexNumber str =
                 )) `altM`
                     Just(TokenInteger(read a), '.':rs, (posStateUpdate (length a)))
         (a, rest) -> 
-            Just(TokenInteger(read a), rest, (posStateUpdate (length a)))
+            return (TokenInteger(read a), rest, (posStateUpdate (length a)))
 
 ---- attempts to consume a dotted identifier/operator (.TRUE., .EQ., ...)
 lexDotId :: String -> Maybe(Token, String, LexerStateUpdate)

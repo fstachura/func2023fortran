@@ -34,7 +34,7 @@ modFunction :: Function
 modFunction [ValueInteger(a), ValueInteger(b)] ctx = Right $ ValueInteger(a `mod` b)
 modFunction args ctx = Left $ EvalErrorInvalidFunctionArgs("mod", args)
 
--- cant generalize over these three 
+-- cant generalize over these three, not sure why
 absFunction :: Function
 absFunction [ValueFloat(a)] ctx = Right $ ValueFloat(abs a)
 absFunction [ValueInteger(a)] ctx = Right $ ValueInteger(abs a)

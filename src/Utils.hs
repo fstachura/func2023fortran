@@ -7,6 +7,9 @@ module Utils (
     altM,
     altE,
     foldME,
+    nothingOnLeft,
+    leftOnNothing,
+    flattenME,
     strToLower
 ) where
 
@@ -30,6 +33,18 @@ foldME' :: (b -> c -> (Either a b)) -> (Either a b) -> [c] -> (Either a b)
 foldME' f (res@(Left _)) _ = res
 foldME' f (res@(Right b)) (e:el) = foldME' f (f b e) el
 foldME' f res [] = res
+
+nothingOnLeft :: (Either a b) -> (Maybe b)
+nothingOnLeft (Left _) = Nothing
+nothingOnLeft (Right b) = Just $ b
+
+leftOnNothing :: a -> (Maybe b) -> (Either a b)
+leftOnNothing _ (Just b)  = return $ b
+leftOnNothing a (Nothing) = Left(a)
+
+flattenME :: a -> (Maybe (Either a b)) -> (Either a b)
+flattenME _ (Just e) = e
+flattenME a Nothing  = Left $ a
 
 --mapLeft :: (a -> c) -> Either a b -> c
 --mapLeft f (Left a)  = f a

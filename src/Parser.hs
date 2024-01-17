@@ -320,12 +320,11 @@ program state =
             (\state -> Right(stmtBlock, state))
 
 block :: ParserState -> (Either ParserError (StmtBlockType, ParserState))
-block state = 
-    maybeOr
-        (Left(ParserErrorExpectedBlock(currentTokenWithInfo state)))
-        (\result -> result >>= 
-            \(stmts, state) -> Right(StmtBlockType(stmts), state))
-        (blockInner state)
+block state = do
+    (stmts, state) <- (flattenME
+        (ParserErrorExpectedBlock(currentTokenWithInfo state))
+        (blockInner state)) 
+    Right(StmtBlockType(stmts), state)
 
 blockInner :: ParserState -> Maybe(Either ParserError ([Stmt], ParserState))
 blockInner state =
@@ -505,24 +504,18 @@ computedGotoStmt state =
             \(expr, state) ->
                 (Right(StmtComputedGoto(list, expr), state))
 
-ifStmt state = 
-    (matchKeyword "if" state) >>=
-    \state ->
-        (matchToken [TokenLeftParen] state) >>=
-        (\state -> case (expression state) of
-            Right(res) -> Just(res)
-            Left(_) -> Nothing) >>=
-                \(expr, state) ->
-                    (matchToken [TokenRightParen] state) >>= 
-                    matchInteger >>=
-                    \(a, state) -> Just $
-                        (matchTokenOrFail TokenComma state) >>=
-                        matchIntegerOrFail >>=
-                        \(b, state) ->
-                            (matchTokenOrFail TokenComma state) >>=
-                            matchIntegerOrFail >>=
-                            \(c, state) ->
-                                Right(StmtArithmeticIf(expr, a, b, c), state)
+ifStmt state = do
+    state <- (matchKeyword "if" state)
+    state <- (matchToken [TokenLeftParen] state)
+    (expr, state) <- nothingOnLeft (expression state)
+    state <- (matchToken [TokenRightParen] state)
+    (a, state) <- (matchInteger state)
+    return $ do
+        state <- (matchTokenOrFail TokenComma state) 
+        (b, state) <- (matchIntegerOrFail state)
+        state <- (matchTokenOrFail TokenComma state)
+        (c, state) <- (matchIntegerOrFail state)
+        return $ (StmtArithmeticIf(expr, a, b, c), state)
 
 assignmentStmt state = 
     (matchIdentifier state) >>=
@@ -571,9 +564,8 @@ matchFormat state =
     (matchTokenOrFail TokenRightParen)
 
 matchIOBody :: ([Expr] -> Stmt) -> ParserState -> StmtParseResult
-matchIOBody constr state = 
-    (matchFormat state) >>=
-    exprList >>=
-        \(exprs, state) ->
-            (Right(constr(exprs), state))
+matchIOBody constr state = do
+    state <- (matchFormat state) 
+    (exprs, state) <- (exprList state)
+    return $ (constr(exprs), state)
 
