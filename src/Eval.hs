@@ -41,12 +41,13 @@ validateSign (s:str) =
 validateInt :: String -> Bool
 validateInt str = 
     (validateSign str) &&
-    (foldl (\acc el -> acc && elem el digits) True str)
+    (foldl (\acc el -> acc && elem el (digits ++ "+-")) True str)
 
 validateFloat :: String -> Bool
 validateFloat str = 
     (validateSign str) &&
-    (foldl (\acc el -> acc && elem el (digits ++ ".")) True str)
+    ((count (== '.') str) <= 1) &&
+    (foldl (\acc el -> acc && elem el (digits ++ ".+-")) True str)
 
 readVariables :: [String] -> String -> (Either EvalError ([(String, Value)], [String]))
 readVariables (var:vars) str =
@@ -87,7 +88,7 @@ execBlock context ((StmtAbsoluteGoto(lt, label)):stmts) = do
 execBlock context ((StmtArithmeticIf(expr, a, b, c)):stmts) = do
     case (eval context expr) of
         Right(ifResult) -> 
-            case (castToInt ifResult) of
+            case (castToFloat ifResult) of
                 Just(val) ->
                     let label = if val < 0 then a else if val == 0 then b else c in
                     goto NamespaceVisible label context
@@ -131,7 +132,7 @@ execBlock context (StmtNoop:stmts) = execBlock context stmts
 execBlock context [] = return $ Right $ context
 
 applyVariables :: [(String, Value)] -> VariableMap -> VariableMap
-applyVariables vars vmap = foldl (\acc (k,v) -> mapInsert (NamespaceVisible, k) v acc) vmap vars
+applyVariables = flip (foldl (\acc (k,v) -> mapInsert (NamespaceVisible, k) v acc))
 
 execRead :: EvalContext -> [String] -> IO (Either EvalError EvalContext)
 execRead context vars = do
@@ -253,4 +254,10 @@ castToInt (ValueBool a) = Just $ if a then 1 else 0
 castToInt (ValueInteger a) = Just $ a
 castToInt (ValueFloat a) = Just $ floor a
 castToInt (ValueString a) = Nothing
+
+castToFloat :: Value -> Maybe(Double)
+castToFloat (ValueBool a) = Just $ if a then 1 else 0
+castToFloat (ValueInteger a) = Just $ fromIntegral $ a
+castToFloat (ValueFloat a) = Just $ a
+castToFloat (ValueString a) = Nothing
 

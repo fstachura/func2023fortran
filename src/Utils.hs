@@ -56,8 +56,8 @@ count f = foldl (\acc el -> if (f el) then acc+1 else acc) 0
 
 -- string utils
 
-lowercaseLetters = "abcdefghijklmnoprstquwxyz"
-uppercaseLetters = "ABCDEFGHIJKLMNOPRSTQUWXYZ"
+lowercaseLetters = "abcdefghijklmnoprstquwvxyz"
+uppercaseLetters = "ABCDEFGHIJKLMNOPRSTQUWVXYZ"
 letters = lowercaseLetters ++ uppercaseLetters
 digits = "0123456789"
 

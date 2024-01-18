@@ -53,6 +53,7 @@ instance Show Expr where
     show (ExprFloat(f)) = (show f)
     show (ExprBool(b)) = (show b)
     show (ExprIdentifier(n, str)) = (show n) ++ ":" ++ str
+    show (ExprCall(n, args)) = n ++ "(" ++ (concat (map ((++ ",") . show) args)) ++ ")"
 
 data StmtBlockType = StmtBlockType([Stmt])
 

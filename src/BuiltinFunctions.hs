@@ -27,12 +27,18 @@ defaultFunctionMap = [
         ("ceil", d2iFunction round "round"),
         ("abs", absFunction),
         ("max", maxFunction),
-        ("min", minFunction)
+        ("min", minFunction),
+        ("real", realFunction)
     ]
 
 modFunction :: Function
 modFunction [ValueInteger(a), ValueInteger(b)] ctx = Right $ ValueInteger(a `mod` b)
 modFunction args ctx = Left $ EvalErrorInvalidFunctionArgs("mod", args)
+
+realFunction :: Function
+realFunction [ValueInteger(a)] ctx = Right $ ValueFloat(fromIntegral a)
+realFunction [ValueFloat(a)] ctx = Right $ ValueFloat(a)
+realFunction args ctx = Left $ EvalErrorInvalidFunctionArgs("real", args)
 
 -- cant generalize over these three, not sure why
 absFunction :: Function

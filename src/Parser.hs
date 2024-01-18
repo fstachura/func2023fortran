@@ -146,11 +146,10 @@ whileMatchesRight tokens f orgResult@(orgExpr, orgState) =
         (Right(orgResult))
         (\stateAfterMatch -> 
             (f stateAfterMatch) >>=
-                \newResult -> 
-                    (convertToBinaryExpr 
-                        orgExpr 
-                        (previousToken stateAfterMatch)
-                        (whileMatchesRight tokens f newResult)))
+                \(newExpr, newState) -> 
+                    (convertToBinaryExpr orgExpr (previousToken stateAfterMatch) (Right(newExpr, newState))) >>=
+                        \(newExpr, newState) ->
+                            (whileMatchesRight tokens f (newExpr, newState)))
         (matchToken tokens orgState)
 
 convertToBinaryExpr :: Expr -> Maybe(TokenWithInfo) -> ExprParseResult -> ExprParseResult
@@ -174,19 +173,6 @@ convertToUnaryExpr (Just(twi@TokenWithInfo{ token=token })) (Right(expr, state))
 parseBinaryRightLoop :: ExprParsingFunction -> [Token] -> ExprParsingFunction -> ParserState -> ExprParseResult
 parseBinaryRightLoop a operators b state =
     (a state) >>= whileMatchesRight operators b
-
-parseBinaryLeftLoop :: ExprParsingFunction -> [Token] -> ParserState -> ExprParseResult
-parseBinaryLeftLoop f operators state =
-    (f state) >>=
-        \result@(expr, newState) -> 
-            maybeOr
-                (Right(result))
-                (\matchState -> 
-                    convertToBinaryExpr 
-                        expr 
-                        (previousToken matchState) 
-                        (parseBinaryLeftLoop f operators matchState))
-                (matchToken operators newState)
 
 parseUnaryLeftLoop :: ExprParsingFunction -> [Token] -> ParserState -> ExprParseResult
 parseUnaryLeftLoop f tokens orgState =
@@ -258,13 +244,13 @@ expression      = equivalence
 equivalence     = parseBinaryRightLoop equivOperand equivOperators equivOperand
 equivOperand    = parseBinaryRightLoop orOperand [TokenOr] orOperand
 orOperand       = parseBinaryRightLoop andOperand [TokenAnd] andOperand
-andOperand      = parseUnaryLeftLoop level4Expr unaryOperators
-level4Expr      = parseBinaryLeftLoop level2Expr relOperators 
+andOperand      = parseUnaryLeftLoop level4Expr unaryOperators 
+level4Expr      = parseBinaryRightLoop level2Expr relOperators level2Expr 
 -- TODO addOperand loop (?)
-level2Expr      = parseBinaryLeftLoop addOperand addOperators
+level2Expr      = parseBinaryRightLoop addOperand addOperators addOperand 
 addOperand      = parseBinaryRightLoop multOperand multOperators addOperand
 multOperand     = parseBinaryRightLoop level1Expr [TokenPow] multOperand
-level1Expr      = parseUnaryLeftLoop primary unaryOperators
+level1Expr      = parseUnaryLeftLoop primary unaryOperators 
 -- TODO calls
 
 functionCall state = 
@@ -374,6 +360,13 @@ compileElseIf condExpr preIfLabel ifStmts postIfLabel (fstElseStmt:elseStmts) =
     (StmtLabeled(NamespaceIf, preIfLabel, fstElseStmt):elseStmts ++ 
         [StmtLabeled(NamespaceIf, postIfLabel, StmtNoop)])
 
+tryMatchEndGoto state =
+    maybeOr
+        (Right([], state))
+        (\(endLabel, state) -> 
+            Right([StmtLabeled(NamespaceVisible, endLabel, StmtNoop)], state))
+        (matchInteger (skipSemicolons state))
+
 ifConstruct state = 
     (matchIfPrelude state) >>=
     \result -> Just $ result >>=
@@ -382,19 +375,21 @@ ifConstruct state =
             \(StmtBlockType(ifStmts), postBlockState) ->
                 case (matchKeyword "else" (skipSemicolons postBlockState)) of
                     Nothing -> 
-                        (matchIfEnd postBlockState) >>=
-                        \(postIfState) -> 
-                            Right $ (compileSimpleIf 
-                                        condExpr 
-                                        (lastIfLabel preIfBlockState) 
-                                        ifStmts,
-                                    postIfState)
+                        (tryMatchEndGoto postBlockState) >>=
+                        \(extraEndGoto, state) ->
+                            (matchIfEnd state) >>=
+                            \(postIfState) -> 
+                                Right $ ((compileSimpleIf 
+                                            condExpr 
+                                            (lastIfLabel preIfBlockState) 
+                                            ifStmts) ++ extraEndGoto,
+                                        postIfState)
                     Just(postElseState) -> 
                         case (matchKeywordWithoutAdvance "if" $ skipSemicolons postElseState) of
                             Nothing ->  
                                 (block postElseState) >>=
                                 \(StmtBlockType(elseStmts), postElseState) ->
-                                    (matchIfEnd postBlockState) >>=
+                                    (matchIfEnd postElseState) >>=
                                     \(postIfState) ->
                                         Right $ (compileElseIf
                                                     condExpr
@@ -449,31 +444,33 @@ doConstruct state =
                                     postLblState    = (advanceDoVarNum (advanceDoVarNum postIncrementState)) in
                                 (block postLblState) >>=
                                 \(StmtBlockType(fstDoBlock:doBlock), postBlockState) ->
-                                    (matchKeywordOrFail "end" (skipSemicolons postBlockState)) >>=
-                                    (matchKeywordOrFail "do") >>=
-                                    \(postDoStatementState) -> 
-                                        Right $ (
-                                            assignment:
-                                            StmtAssign(doLimit, limitExpr):
-                                            StmtAssign(doInc, incExpr):
-                                            StmtLabeled(NamespaceDo, doNum, fstDoBlock):
-                                            doBlock ++
-                                            StmtIntCompiledIf(
-                                                ExprBin(
-                                                    (ExprIdentifier(var)),
-                                                    BinOpGeq,
-                                                    (ExprIdentifier(doLimit))),
-                                                NamespaceDo,
-                                                doEndNum):
-                                            StmtAssign(
-                                                var,
-                                                ExprBin(
-                                                    (ExprIdentifier(var)), 
-                                                    BinOpAdd, 
-                                                    (ExprIdentifier(doInc)))):
-                                            StmtAbsoluteGoto(NamespaceDo, doNum):
-                                            StmtLabeled(NamespaceDo, doEndNum, StmtNoop):[],
-                                        postDoStatementState)
+                                    (tryMatchEndGoto postBlockState) >>=
+                                    \(extraEndGoto, state) ->
+                                        (matchKeywordOrFail "end" (skipSemicolons state)) >>=
+                                        (matchKeywordOrFail "do") >>=
+                                        \(postDoStatementState) -> 
+                                            Right $ (
+                                                assignment:
+                                                StmtAssign(doLimit, limitExpr):
+                                                StmtAssign(doInc, incExpr):
+                                                StmtLabeled(NamespaceDo, doNum, fstDoBlock):
+                                                doBlock ++
+                                                StmtIntCompiledIf(
+                                                    ExprBin(
+                                                        (ExprIdentifier(var)),
+                                                        BinOpGeq,
+                                                        (ExprIdentifier(doLimit))),
+                                                    NamespaceDo,
+                                                    doEndNum):
+                                                StmtAssign(
+                                                    var,
+                                                    ExprBin(
+                                                        (ExprIdentifier(var)), 
+                                                        BinOpAdd, 
+                                                        (ExprIdentifier(doInc)))):
+                                                StmtAbsoluteGoto(NamespaceDo, doNum):
+                                                StmtLabeled(NamespaceDo, doEndNum, StmtNoop):extraEndGoto,
+                                            postDoStatementState)
                     _ -> Left(ParserErrorUnknown(currentTokenWithInfo postAssignmentState))
 
 executableConstruct state = 
