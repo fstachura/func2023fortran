@@ -7,39 +7,38 @@ module Parser (
 import AstTypes
 import TokenTypes
 import Utils
-import Map
 import Debug.Trace
 
 -- parser state
 
 data ParserState = ParserState {
     tokensLeft :: [TokenWithInfo],
-    previousToken :: Maybe(TokenWithInfo),
-    lastIfLabel :: Integer,
-    lastDoVarNum :: Integer
+    previousToken :: Maybe TokenWithInfo,
+    lastIfLabel :: Int,
+    lastDoVarNum :: Int 
 }
     deriving (Show)
 
 data ParserError = 
-    ParserErrorExpectedExpression(TokenWithInfo) | 
-    ParserErrorExpectedToken(TokenWithInfo, Token) | 
-    ParserErrorExpectedKeyword(TokenWithInfo, String) | 
-    ParserErrorExpectedIdentifier(TokenWithInfo) | 
-    ParserErrorExpectedInteger(TokenWithInfo) | 
-    ParserErrorExpectedBlock(TokenWithInfo) | 
-    ParserErrorExpectedIfConstruct(TokenWithInfo) | 
-    ParserErrorExpectedAssignment(TokenWithInfo) | 
-    ParserErrorUnexpectedToken(TokenWithInfo) | 
-    ParserErrorUnknown(TokenWithInfo) | 
-    ParserErrorDuplicateLabel(TokenWithInfo, Integer) |
-    ParserErrorNotImplemented
+      ParserErrorExpectedExpression TokenWithInfo 
+    | ParserErrorExpectedToken TokenWithInfo Token 
+    | ParserErrorExpectedKeyword TokenWithInfo String
+    | ParserErrorExpectedIdentifier TokenWithInfo
+    | ParserErrorExpectedInteger TokenWithInfo
+    | ParserErrorExpectedBlock TokenWithInfo
+    | ParserErrorExpectedIfConstruct TokenWithInfo
+    | ParserErrorExpectedAssignment TokenWithInfo
+    | ParserErrorUnexpectedToken TokenWithInfo
+    | ParserErrorUnknown TokenWithInfo
+    | ParserErrorDuplicateLabel TokenWithInfo Int
+    | ParserErrorNotImplemented
     deriving(Show)
 
-type ExprParseResult                = (Either (ParserError) (Expr, ParserState))
-type StmtParseResult                = (Either (ParserError) (Stmt, ParserState))
-type ConstructParseResult           = (Either (ParserError) (StmtBlockType, ParserState))
-type OptionalConstructParseResult   = Maybe (Either (ParserError) ([Stmt], ParserState))
-type OptionalStmtParseResult        = Maybe (Either (ParserError) (Stmt, ParserState))
+type ExprParseResult                = Either ParserError (Expr, ParserState)
+type StmtParseResult                = Either ParserError (Stmt, ParserState)
+type ConstructParseResult           = Either ParserError (StmtBlockType, ParserState)
+type OptionalConstructParseResult   = Maybe (Either ParserError ([Stmt], ParserState))
+type OptionalStmtParseResult        = Maybe (Either ParserError (Stmt, ParserState))
 
 newParserState tokens = ParserState { 
     tokensLeft=tokens, 
@@ -48,7 +47,6 @@ newParserState tokens = ParserState {
     lastDoVarNum=0
 }
 
-currentToken ParserState { tokensLeft=(TokenWithInfo{token=t}:_) } = t
 currentTokenWithInfo ParserState { tokensLeft=(twi:_) } = twi
 
 advanceParser state@ParserState{ tokensLeft=(t:ts) } = state { 
@@ -67,84 +65,102 @@ advanceDoVarNum state@ParserState { lastDoVarNum=l } = state {
 -- token to operators converters
 
 tokenToBinaryOp :: Token -> Maybe(BinaryOp)
-tokenToBinaryOp TokenEqEq   = Just(BinOpEq)
-tokenToBinaryOp TokenEq     = Just(BinOpEq)
-tokenToBinaryOp TokenNeq    = Just(BinOpNeq)
-tokenToBinaryOp TokenEqv    = Just(BinOpEq)
-tokenToBinaryOp TokenNeqv   = Just(BinOpNeq)
-tokenToBinaryOp TokenGt     = Just(BinOpGt)
-tokenToBinaryOp TokenGeq    = Just(BinOpGeq)
-tokenToBinaryOp TokenLt     = Just(BinOpLt)
-tokenToBinaryOp TokenLeq    = Just(BinOpLeq)
-tokenToBinaryOp TokenPlus   = Just(BinOpAdd)
-tokenToBinaryOp TokenMinus  = Just(BinOpSub)
-tokenToBinaryOp TokenSlash  = Just(BinOpDiv)
-tokenToBinaryOp TokenStar   = Just(BinOpMult)
-tokenToBinaryOp TokenPow    = Just(BinOpPow)
-tokenToBinaryOp TokenAnd    = Just(BinOpAnd)
-tokenToBinaryOp TokenOr     = Just(BinOpOr)
+tokenToBinaryOp TokenEqEq   = Just $ BinOpEq
+tokenToBinaryOp TokenEq     = Just $ BinOpEq
+tokenToBinaryOp TokenNeq    = Just $ BinOpNeq
+tokenToBinaryOp TokenEqv    = Just $ BinOpEq
+tokenToBinaryOp TokenNeqv   = Just $ BinOpNeq
+tokenToBinaryOp TokenGt     = Just $ BinOpGt
+tokenToBinaryOp TokenGeq    = Just $ BinOpGeq
+tokenToBinaryOp TokenLt     = Just $ BinOpLt
+tokenToBinaryOp TokenLeq    = Just $ BinOpLeq
+tokenToBinaryOp TokenPlus   = Just $ BinOpAdd
+tokenToBinaryOp TokenMinus  = Just $ BinOpSub
+tokenToBinaryOp TokenSlash  = Just $ BinOpDiv
+tokenToBinaryOp TokenStar   = Just $ BinOpMult
+tokenToBinaryOp TokenPow    = Just $ BinOpPow
+tokenToBinaryOp TokenAnd    = Just $ BinOpAnd
+tokenToBinaryOp TokenOr     = Just $ BinOpOr
 tokenToBinaryOp _           = Nothing
 
 tokenToUnaryOp :: Token -> Maybe(UnaryOp)
-tokenToUnaryOp TokenNot     = Just(UnOpNot)
-tokenToUnaryOp TokenMinus   = Just(UnOpMinus)
-tokenToUnaryOp TokenPlus    = Just(UnOpPlus)
+tokenToUnaryOp TokenNot     = Just $ UnOpNot
+tokenToUnaryOp TokenMinus   = Just $ UnOpMinus
+tokenToUnaryOp TokenPlus    = Just $ UnOpPlus
 tokenToUnaryOp _            = Nothing
 
 -- utilities
 
-matchToken :: [Token] -> ParserState -> Maybe(ParserState)
-matchToken tokens state@ParserState{ tokensLeft=(TokenWithInfo{token=t}:ts) }
-    | (t `elem` tokens) = Just(advanceParser state)
+matchToken :: [Token] -> ParserState -> Maybe ParserState
+matchToken tokens state@ParserState{ tokensLeft=(TokenWithInfo{token=t}:_) }
+    | (t `elem` tokens) = Just $ advanceParser state
     | otherwise         = Nothing
-matchToken tokens _     = Nothing
+matchToken _ _          = Nothing
 
-matchTokenOrFail :: Token -> ParserState -> (Either ParserError ParserState)
+matchTokenOrFail :: Token -> ParserState -> Either ParserError ParserState
 matchTokenOrFail token state = 
     maybeOr
-        (Left(ParserErrorExpectedToken((currentTokenWithInfo state), token)))
+        (Left $ ParserErrorExpectedToken (currentTokenWithInfo state) token)
         (Right . id)
         (matchToken [token] state) 
 
-matchKeywordWithoutAdvance :: String -> ParserState -> Maybe(ParserState)
-matchKeywordWithoutAdvance s state@ParserState{ tokensLeft=(TokenWithInfo{token=(TokenIdentifier(is))}:ts) }
+matchKeywordWithoutAdvance :: String -> ParserState -> Maybe ParserState
+matchKeywordWithoutAdvance s state@ParserState{ tokensLeft=(TokenWithInfo{token=(TokenIdentifier(is))}:_) }
     | ((strToLower s) == (strToLower is)) = Just(state)
     | otherwise                           = Nothing
 matchKeywordWithoutAdvance _ _ = Nothing
 
-matchKeyword :: String -> ParserState -> Maybe(ParserState)
+matchKeyword :: String -> ParserState -> Maybe ParserState
 matchKeyword s state = (matchKeywordWithoutAdvance s state) >>= (Just . advanceParser)
 
-matchKeywordOrFail :: String -> ParserState -> (Either ParserError ParserState)
+matchKeywordOrFail :: String -> ParserState -> Either ParserError ParserState
 matchKeywordOrFail keyword state = 
     maybeOr
-        (Left(ParserErrorExpectedKeyword((currentTokenWithInfo state), keyword)))
+        (Left $ ParserErrorExpectedKeyword (currentTokenWithInfo state) keyword)
         (Right . id)
         (matchKeyword keyword state)
 
-matchIdentifier :: ParserState -> Maybe(String, ParserState)
-matchIdentifier state@ParserState{ tokensLeft=(TokenWithInfo{token=(TokenIdentifier(is))}:ts) } = 
+matchIdentifier :: ParserState -> Maybe (String, ParserState)
+matchIdentifier state@ParserState{ tokensLeft=(TokenWithInfo{token=(TokenIdentifier(is))}:_) } = 
     (Just(is, (advanceParser state)))
 matchIdentifier _ = Nothing
 
-matchIdentifierOrFail :: ParserState -> (Either ParserError (String, ParserState))
+matchIdentifierOrFail :: ParserState -> Either ParserError (String, ParserState)
 matchIdentifierOrFail state = 
     maybeOr
-        (Left(ParserErrorExpectedIdentifier(currentTokenWithInfo state)))
+        (Left $ ParserErrorExpectedIdentifier $ currentTokenWithInfo state)
         (Right . id)
         (matchIdentifier state)
 
-matchInteger :: ParserState -> Maybe(Integer, ParserState)
-matchInteger state@ParserState{ tokensLeft=(TokenWithInfo{token=(TokenInteger(i))}:ts) } = 
+matchInteger :: ParserState -> Maybe (Int, ParserState)
+matchInteger state@ParserState{ tokensLeft=(TokenWithInfo{token=(TokenInteger(i))}:_) } = 
     (Just(i, (advanceParser state)))
 matchInteger _ = Nothing
 
-matchIntegerOrFail :: ParserState -> (Either ParserError (Integer, ParserState))
+matchIntegerOrFail :: ParserState -> Either ParserError (Int, ParserState)
 matchIntegerOrFail state = 
     maybeOr
-        (Left(ParserErrorExpectedInteger(currentTokenWithInfo state)))
+        (Left $ ParserErrorExpectedInteger $ currentTokenWithInfo state)
         (Right . id)
         (matchInteger state)
+
+convertToBinaryExpr :: Expr -> Maybe(TokenWithInfo) -> ExprParseResult -> ExprParseResult
+convertToBinaryExpr _ _ result@(Left(_)) = result
+convertToBinaryExpr _ (Nothing) (Right(_, state)) = Left $ ParserErrorUnknown $ currentTokenWithInfo state
+convertToBinaryExpr expr (Just(twi@TokenWithInfo{ token=token })) (Right(expr2, state)) =
+    maybeOr 
+        (Left $ ParserErrorUnexpectedToken $ twi)
+        (\t -> Right $ (ExprBin expr t expr2, state))
+        (tokenToBinaryOp token)
+
+convertToUnaryExpr :: Maybe(TokenWithInfo) -> ExprParseResult -> ExprParseResult
+convertToUnaryExpr _ result@(Left(_)) = result
+convertToUnaryExpr (Nothing) (Right(_, state)) = Left $ ParserErrorUnknown $ currentTokenWithInfo state
+convertToUnaryExpr (Just(twi@TokenWithInfo{ token=token })) (Right(expr, state)) = 
+    maybeOr
+        (Left $ ParserErrorUnexpectedToken twi)
+        (\t -> Right (ExprUn t expr, state))
+        (tokenToUnaryOp token)
 
 whileMatchesRight :: [Token] -> ExprParsingFunction -> (Expr, ParserState) -> ExprParseResult
 whileMatchesRight tokens f orgResult@(orgExpr, orgState) =
@@ -157,24 +173,6 @@ whileMatchesRight tokens f orgResult@(orgExpr, orgState) =
                         \(newExpr, newState) ->
                             (whileMatchesRight tokens f (newExpr, newState)))
         (matchToken tokens orgState)
-
-convertToBinaryExpr :: Expr -> Maybe(TokenWithInfo) -> ExprParseResult -> ExprParseResult
-convertToBinaryExpr _ _ result@(Left(_)) = result
-convertToBinaryExpr _ (Nothing) (Right(expr, state)) = (Left(ParserErrorUnknown(currentTokenWithInfo(state))))
-convertToBinaryExpr expr (Just(twi@TokenWithInfo{ token=token })) (Right(expr2, state)) =
-    maybeOr 
-        (Left(ParserErrorUnexpectedToken(twi)))
-        (\t -> (Right(ExprBin(expr, t, expr2), state)))
-        (tokenToBinaryOp token)
-
-convertToUnaryExpr :: Maybe(TokenWithInfo) -> ExprParseResult -> ExprParseResult
-convertToUnaryExpr _ result@(Left(_)) = result
-convertToUnaryExpr (Nothing) (Right(expr, state)) = (Left(ParserErrorUnknown(currentTokenWithInfo(state))))
-convertToUnaryExpr (Just(twi@TokenWithInfo{ token=token })) (Right(expr, state)) = 
-    maybeOr
-        (Left(ParserErrorUnexpectedToken(twi))) 
-        (\t -> (Right(ExprUn(t, expr), state)))
-        (tokenToUnaryOp token)
 
 parseBinaryRightLoop :: ExprParsingFunction -> [Token] -> ExprParsingFunction -> ParserState -> ExprParseResult
 parseBinaryRightLoop a operators b state =
@@ -192,21 +190,8 @@ parseUnary tokens f orgState =
         (matchToken tokens orgState)
     where res = (f orgState)
 
-
-advanceResult :: ExprParseResult -> ExprParseResult
-advanceResult = (flip (>>=)) (\(expr, state) -> Right(expr, (advanceParser state)))
-
-exprList :: ParserState -> (Either ParserError ([Expr], ParserState))
-exprList = matchList expression
-
-integerList :: ParserState -> (Either ParserError ([Integer], ParserState))
-integerList = matchList matchIntegerOrFail
-
-identifierList :: ParserState -> (Either ParserError ([String], ParserState))
-identifierList = matchList matchIdentifierOrFail
-
-matchList :: (ParserState -> (Either ParserError (a, ParserState))) 
-            -> ParserState -> (Either ParserError ([a], ParserState))
+matchList :: (ParserState -> Either ParserError (a, ParserState)) 
+            -> ParserState -> Either ParserError ([a], ParserState)
 
 matchList f orgState =
     (f orgState) >>=
@@ -229,7 +214,6 @@ skipSemicolons state =
 -- parsers
 
 type ExprParsingFunction                = ParserState -> ExprParseResult
-type StmtParsingFunction                = ParserState -> StmtParseResult
 type ConstructParsingFunction           = ParserState -> ConstructParseResult
 type OptionalConstructParsingFunction   = ParserState -> OptionalConstructParseResult
 type OptionalStmtParsingFunction        = ParserState -> OptionalStmtParseResult
@@ -265,55 +249,55 @@ functionCall state =
     (matchIdentifierOrFail state) >>=
     \(id, postIdState) ->
         (matchTokenOrFail TokenLeftParen postIdState) >>=
-        (exprList) >>=
+        (matchList expression) >>=
         \(exprList, postExprListState) ->
             (matchTokenOrFail TokenRightParen postExprListState) >>=
             \postRightParenState ->
-                (Right(ExprCall(id, exprList), postRightParenState))
+                Right (ExprCall id exprList, postRightParenState)
 
-primary state@ParserState { tokensLeft=(twi@TokenWithInfo{token=t}:ts) } = 
+primary state@ParserState { tokensLeft=(twi@TokenWithInfo{token=t}:_) } = 
     case t of
-        TokenString(s) -> Right(ExprString(s), advanceParser state) 
-        TokenInteger(i) -> Right(ExprInteger(i), advanceParser state)
-        TokenFloat(f) -> Right(ExprFloat(f), advanceParser state)
-        TokenBool(b) -> Right(ExprBool(b), advanceParser state)
+        TokenString(s) -> Right (ExprString s, advanceParser state) 
+        TokenInteger(i) -> Right (ExprInteger i, advanceParser state)
+        TokenFloat(f) -> Right (ExprFloat f, advanceParser state)
+        TokenBool(b) -> Right (ExprBool b, advanceParser state)
         TokenIdentifier(i) -> 
             maybeOr
-                (Right(ExprIdentifier(NamespaceVisible, i), advanceParser state))
+                (Right(ExprIdentifier (NamespaceVisible, i), advanceParser state))
                 (\_ -> functionCall state)
                 (matchToken [TokenLeftParen] (advanceParser state))
         TokenLeftParen -> (expression $ advanceParser state) >>=
             \x -> case x of
                 (expr,
                     state@ParserState{ 
-                        tokensLeft=(TokenWithInfo{ token=TokenRightParen }:ts) 
+                        tokensLeft=(TokenWithInfo{ token=TokenRightParen }:_) 
                     }) -> Right(expr, advanceParser state)
-                (expr,
-                    state@ParserState{ 
-                        tokensLeft=(t:ts) 
-                    }) -> Left(ParserErrorExpectedToken(t, TokenRightParen))
-        otherwise -> Left(ParserErrorExpectedExpression(twi))
+                (_,
+                    ParserState{
+                        tokensLeft=(t:_) 
+                    }) -> Left(ParserErrorExpectedToken t TokenRightParen)
+        _ -> Left(ParserErrorExpectedExpression twi)
 
 -- statement parsers
 
 program state = 
     (matchKeywordOrFail "program" (skipSemicolons state)) >>=
     (matchIdentifierOrFail) >>=
-    \(id, state) -> 
+    \(_, state) -> 
         (block state) >>=
         \(stmtBlock, state) ->
             (matchKeywordOrFail "end" (skipSemicolons state)) >>=
             (matchKeywordOrFail "program") >>=
             (\state -> Right(stmtBlock, state))
 
-block :: ParserState -> (Either ParserError (StmtBlockType, ParserState))
+block :: ParserState -> Either ParserError (StmtBlockType, ParserState)
 block state = do
     (stmts, state) <- (flattenME
-        (ParserErrorExpectedBlock(currentTokenWithInfo state))
+        (ParserErrorExpectedBlock $ currentTokenWithInfo state)
         (blockInner state)) 
     Right(StmtBlockType(stmts), state)
 
-blockInner :: ParserState -> Maybe(Either ParserError ([Stmt], ParserState))
+blockInner :: ParserState -> Maybe (Either ParserError ([Stmt], ParserState))
 blockInner state =
     ((matchToken [TokenSemicolon] state) >>= (blockInner)) `altM`
     ((executionPart state) >>=
@@ -332,7 +316,7 @@ executionPart state =
         \state -> Just $ 
             state >>= 
             \(stmt:stmts, state) -> 
-                Right(StmtLabeled(NamespaceVisible, label, stmt):stmts, state)) 
+                Right $ ((StmtLabeled (NamespaceVisible, label) stmt):stmts, state)) 
     `altM` 
     (executableConstruct state)
 
@@ -352,20 +336,20 @@ matchIfEnd state =
     (matchKeywordOrFail "end" (skipSemicolons state)) >>= (matchKeywordOrFail "if")
 
 compileSimpleIf condExpr label ifStmts = 
-    StmtIntCompiledIf(ExprUn(UnOpNot, condExpr), NamespaceIf, label):ifStmts ++ 
-        [StmtLabeled(NamespaceIf, label, StmtNoop)]
+    (StmtIntCompiledIf (ExprUn UnOpNot condExpr) (NamespaceIf, label)):ifStmts ++ 
+        [StmtLabeled (NamespaceIf, label) StmtNoop]
 
 compileElseIf condExpr preIfLabel ifStmts postIfLabel (fstElseStmt:elseStmts) = 
-    (StmtIntCompiledIf(ExprUn(UnOpNot, condExpr), NamespaceIf, preIfLabel):ifStmts ++ 
-        [StmtAbsoluteGoto(NamespaceIf, postIfLabel)]) ++
-    (StmtLabeled(NamespaceIf, preIfLabel, fstElseStmt):elseStmts ++ 
-        [StmtLabeled(NamespaceIf, postIfLabel, StmtNoop)])
+    ((StmtIntCompiledIf (ExprUn UnOpNot condExpr) (NamespaceIf, preIfLabel)):ifStmts ++ 
+        [StmtAbsoluteGoto (NamespaceIf, postIfLabel)]) ++
+    ((StmtLabeled (NamespaceIf, preIfLabel) fstElseStmt):elseStmts ++ 
+        [StmtLabeled (NamespaceIf, postIfLabel) StmtNoop])
 
 tryMatchEndGoto state =
     maybeOr
         (Right([], state))
         (\(endLabel, state) -> 
-            Right([StmtLabeled(NamespaceVisible, endLabel, StmtNoop)], state))
+            Right([StmtLabeled (NamespaceVisible, endLabel) StmtNoop], state))
         (matchInteger (skipSemicolons state))
 
 ifConstruct state = 
@@ -423,56 +407,50 @@ tryMatchIncrement postLimitState =
             \(incrementExpr, postIncrementState) ->
                 (Right(incrementExpr, postIncrementState))
 
-doConstruct state = 
-    (matchKeyword "do" state) >>=
-    \postDoKeywordState -> 
-        let crttoken      = (currentTokenWithInfo postDoKeywordState)
-            assignmentErr = Just $ Left $ ParserErrorExpectedAssignment(crttoken) in
-        ((assignmentStmt postDoKeywordState) `altM` assignmentErr) >>=
-        \result -> Just $ result >>=
-            \(assignment, postAssignmentState) -> 
-                case assignment of 
-                    StmtAssign(var, expr) ->
-                        (matchTokenOrFail TokenComma postAssignmentState) >>=
-                        (expression) >>=
-                        \(limitExpr, postLimitState) ->
-                            (tryMatchIncrement postLimitState) >>=
-                            \(incExpr, postIncrementState) ->
-                                let doNum           = (lastDoVarNum state) 
-                                    doEndNum        = (lastDoVarNum state) + 1
-                                    doLimit         = (NamespaceDo, "l" ++ (show doNum))
-                                    doInc           = (NamespaceDo, "i" ++ (show doNum)) 
-                                    postLblState    = (advanceDoVarNum (advanceDoVarNum postIncrementState)) in
-                                (block postLblState) >>=
-                                \(StmtBlockType(fstDoBlock:doBlock), postBlockState) ->
-                                    (tryMatchEndGoto postBlockState) >>=
-                                    \(extraEndGoto, state) ->
-                                        (matchKeywordOrFail "end" (skipSemicolons state)) >>=
-                                        (matchKeywordOrFail "do") >>=
-                                        \(postDoStatementState) -> 
-                                            Right $ (
-                                                assignment:
-                                                StmtAssign(doLimit, limitExpr):
-                                                StmtAssign(doInc, incExpr):
-                                                StmtLabeled(NamespaceDo, doNum, fstDoBlock):
-                                                doBlock ++
-                                                StmtIntCompiledIf(
-                                                    ExprBin(
-                                                        (ExprIdentifier(var)),
-                                                        BinOpGeq,
-                                                        (ExprIdentifier(doLimit))),
-                                                    NamespaceDo,
-                                                    doEndNum):
-                                                StmtAssign(
-                                                    var,
-                                                    ExprBin(
-                                                        (ExprIdentifier(var)), 
-                                                        BinOpAdd, 
-                                                        (ExprIdentifier(doInc)))):
-                                                StmtAbsoluteGoto(NamespaceDo, doNum):
-                                                StmtLabeled(NamespaceDo, doEndNum, StmtNoop):extraEndGoto,
-                                            postDoStatementState)
-                    _ -> Left(ParserErrorUnknown(currentTokenWithInfo postAssignmentState))
+doConstruct state = do
+    state <- (matchKeyword "do" state)
+    let crttoken      = currentTokenWithInfo state
+        assignmentErr = Just $ Left $ ParserErrorExpectedAssignment crttoken 
+    result <- (assignmentStmt state) `altM` assignmentErr
+    return $ do
+        (assignment, postAssignmentState) <- result
+        case assignment of 
+            StmtAssign var _ -> do
+                state <- matchTokenOrFail TokenComma postAssignmentState
+                (limitExpr, postLimitState) <- expression state
+                (incExpr, postIncrementState) <- tryMatchIncrement postLimitState
+                let doNum           = (lastDoVarNum state) 
+                    doEndNum        = (lastDoVarNum state) + 1
+                    doLimit         = (NamespaceDo, "l" ++ (show doNum))
+                    doInc           = (NamespaceDo, "i" ++ (show doNum)) 
+                    postLblState    = (advanceDoVarNum (advanceDoVarNum postIncrementState))
+                (block postLblState) >>=
+                    \(StmtBlockType(fstDoBlock:doBlock), postBlockState) -> do
+                        (extraEndGoto, state) <- tryMatchEndGoto postBlockState
+                        state <- matchKeywordOrFail "end" (skipSemicolons state)
+                        postDoStatementState <- matchKeywordOrFail "do" state
+                        return $ (
+                            assignment:
+                            (StmtAssign doLimit limitExpr):
+                            (StmtAssign doInc incExpr):
+                            (StmtLabeled (NamespaceDo, doNum) fstDoBlock):
+                            doBlock ++
+                            (StmtIntCompiledIf
+                                (ExprBin
+                                    (ExprIdentifier var)
+                                    BinOpGeq
+                                    (ExprIdentifier doLimit))
+                                (NamespaceDo, doEndNum)):
+                            (StmtAssign
+                                var
+                                (ExprBin
+                                    (ExprIdentifier var)
+                                    BinOpAdd
+                                    (ExprIdentifier doInc))):
+                            (StmtAbsoluteGoto (NamespaceDo, doNum)):
+                            (StmtLabeled (NamespaceDo, doEndNum) StmtNoop):extraEndGoto,
+                            postDoStatementState)
+            _ -> Left $ ParserErrorUnknown $ currentTokenWithInfo postAssignmentState
 
 executableConstruct state = 
     (actionStmt state)  `altM`
@@ -488,19 +466,19 @@ gotoStmt state =
     \state -> Just $
         (matchIntegerOrFail state) >>=
         \(label, state) ->
-            Right(StmtAbsoluteGoto(NamespaceVisible, label), state)
+            Right(StmtAbsoluteGoto (NamespaceVisible, label), state)
 
 -- TODO optional comma after list
 computedGotoStmt state = 
     (matchGoTo state) >>=
     (matchToken [TokenLeftParen]) >>=
     \state -> Just $ 
-        (integerList state) >>=
+        (matchList matchIntegerOrFail state) >>=
         \(list, state) ->
             (matchTokenOrFail TokenRightParen state) >>=
             (expression) >>=
             \(expr, state) ->
-                (Right(StmtComputedGoto(list, expr), state))
+                Right $ (StmtComputedGoto list expr, state)
 
 ifStmt state = do
     state <- (matchKeyword "if" state)
@@ -513,7 +491,7 @@ ifStmt state = do
         (b, state) <- (matchIntegerOrFail state)
         state <- (matchTokenOrFail TokenComma state)
         (c, state) <- (matchIntegerOrFail state)
-        return $ (StmtArithmeticIf(expr, a, b, c), state)
+        return $ ((StmtArithmeticIf expr a b c), state)
 
 assignmentStmt state = 
     (matchIdentifier state) >>=
@@ -521,7 +499,7 @@ assignmentStmt state =
         (matchToken [TokenEq] state) >>=
         \state -> Just $
             (expression state) >>=
-            (\(expr, state) -> Right(StmtAssign((NamespaceVisible, id), expr), state))
+            (\(expr, state) -> Right $ ((StmtAssign (NamespaceVisible, id) expr), state))
             
 
 actionStmt state = 
@@ -560,10 +538,4 @@ matchFormat state =
     (matchTokenOrFail TokenComma)              >>=
     (matchTokenOrFail TokenStar)               >>=
     (matchTokenOrFail TokenRightParen)
-
-matchIOBody :: ([Expr] -> Stmt) -> ParserState -> StmtParseResult
-matchIOBody constr state = do
-    state <- (matchFormat state) 
-    (exprs, state) <- (exprList state)
-    return $ (constr(exprs), state)
 

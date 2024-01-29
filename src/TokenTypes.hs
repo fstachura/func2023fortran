@@ -21,8 +21,8 @@ data Token =
     TokenEq | 
     TokenPlus | TokenMinus | TokenStar | TokenSlash | TokenPow |
 
-    TokenString(String) | TokenInteger(Integer) | TokenFloat(Double) | TokenBool(Bool) | 
-    TokenIdentifier(String) |
+    TokenString String | TokenInteger Int | TokenFloat Double | TokenBool Bool | 
+    TokenIdentifier String |
 
     TokenEof
     deriving (Show, Eq)
