@@ -10,8 +10,10 @@ module Utils (
     nothingOnLeft,
     leftOnNothing,
     flattenME,
+    lookupFilter,
     strToLower,
-    count
+    count,
+    prefix
 ) where
 
 altM :: (Maybe a) -> (Maybe a) -> (Maybe a)
@@ -32,8 +34,8 @@ foldME f d (e:el) = foldME' f (f d e) el
 
 foldME' :: (b -> c -> (Either a b)) -> (Either a b) -> [c] -> (Either a b)
 foldME' f (res@(Left _)) _ = res
-foldME' f (res@(Right b)) (e:el) = foldME' f (f b e) el
-foldME' f res [] = res
+foldME' f (Right b) (e:el) = foldME' f (f b e) el
+foldME' _ res [] = res
 
 nothingOnLeft :: (Either a b) -> (Maybe b)
 nothingOnLeft (Left _) = Nothing
@@ -47,12 +49,17 @@ flattenME :: a -> (Maybe (Either a b)) -> (Either a b)
 flattenME _ (Just e) = e
 flattenME a Nothing  = Left $ a
 
---mapLeft :: (a -> c) -> Either a b -> c
---mapLeft f (Left a)  = f a
---mapLeft _ b         = b
+-- list utils
 
 count :: (a -> Bool) -> [a] -> Int
 count f = foldl (\acc el -> if (f el) then acc+1 else acc) 0
+
+prefix :: (Eq a) => [a] -> [a] -> Bool
+prefix m s = (take (length m) s) == m
+
+lookupFilter :: (a -> Bool) -> [(a, b)] -> Maybe (a, b)
+lookupFilter _ [] = Nothing
+lookupFilter f ((a, b):xs) = if (f a) then Just $ (a, b) else lookupFilter f xs
 
 -- string utils
 

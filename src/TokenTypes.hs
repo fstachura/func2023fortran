@@ -8,8 +8,13 @@ module TokenTypes (
     multOperators,
     unaryOperators,
     signOperators,
-    newTokenLocation
+    newTokenLocation,
+    dotTokenMap,
+    identifierChars, 
+    simpleTokenMap 
 ) where
+
+import Utils
 
 data Token = 
     TokenEqEq | TokenNeq | TokenLt | TokenLeq | TokenGt | TokenGeq |
@@ -26,6 +31,46 @@ data Token =
 
     TokenEof
     deriving (Show, Eq)
+
+identifierChars = letters ++ digits ++ "_"
+
+dotTokenMap = [
+        ("and", TokenAnd),
+        ("or", TokenOr),
+        ("not", TokenNot), 
+        ("eq", TokenEq), 
+        ("ne", TokenNeq),
+        ("eqv", TokenEqv),
+        ("neqv", TokenNeqv),
+        ("lt", TokenLt),
+        ("le", TokenLeq),
+        ("gt", TokenGt),
+        ("ge", TokenGeq),
+        ("true", TokenBool True),
+        ("t", TokenBool True),
+        ("false", TokenBool False),
+        ("f", TokenBool False)
+    ]
+
+simpleTokenMap = [
+        ("<=", TokenLeq),
+        (">=", TokenGeq),
+        ("==", TokenEqEq),
+        ("/=", TokenNeq),
+        ("!=", TokenNeq),
+        ("**", TokenPow),
+        ("+", TokenPlus),
+        ("-", TokenMinus),
+        ("*", TokenStar),
+        ("/", TokenSlash),
+        ("=", TokenEq),
+        (">", TokenGt),
+        ("<", TokenLt),
+        ("(", TokenLeftParen),
+        (")", TokenRightParen),
+        (",", TokenComma),
+        (";", TokenSemicolon)
+    ]
 
 equivOperators = [TokenEqv, TokenNeqv, TokenEq]
 relOperators = [TokenEqEq, TokenNeq, TokenLt, TokenLeq, TokenGt, TokenGeq]
