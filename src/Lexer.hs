@@ -85,10 +85,10 @@ lexToken ('!':xs) =
 lexToken "" = Just(TokenEof, "", emptyStateUpdate)
 
 lexToken s =
-    case lookupFilter ((flip prefix) s) simpleTokenMap of
-        Just(tokenStr, token) -> let l = (length tokenStr) in
+    (lookupFilter ((flip prefix) s) simpleTokenMap) >>= 
+        \(tokenStr, token) -> 
+        let l = (length tokenStr) in
             Just $ (token, drop l s, posStateUpdate l)
-        Nothing -> Nothing
 
 -- state 
 

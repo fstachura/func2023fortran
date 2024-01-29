@@ -40,7 +40,6 @@ realFunction [ValueInteger(a)] _ = Right $ ValueFloat $ fromIntegral a
 realFunction [ValueFloat(a)] _ = Right $ ValueFloat a
 realFunction args _ = Left $ EvalErrorInvalidFunctionArgs "real" args
 
--- cant generalize over these three, not sure why
 absFunction :: Function
 absFunction [ValueFloat(a)] _ = Right $ ValueFloat $ abs a
 absFunction [ValueInteger(a)] _ = Right $ ValueInteger $ abs a

@@ -51,3 +51,4 @@ instance Show EvalContext where
         "EvalContext{ variableMap=" ++ (show vm) ++ ", gotoMap=" ++ (show gm) ++ " }"
 
 type EvalResult = Either EvalError Value
+

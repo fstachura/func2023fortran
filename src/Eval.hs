@@ -17,11 +17,7 @@ evalContext gotoMap = EvalContext {
     functionMap=defaultFunctionMap
 }
 
-goto :: Namespace -> Int -> EvalContext -> IO (Either EvalError EvalContext)
-goto t l context = do
-    case (mapLookup (t, l) (gotoMap context)) of
-        Just(res) -> execBlock context res
-        Nothing -> return $ Left $ EvalErrorLabelNotFound l
+-- utils
 
 skipSpaces (' ':rest) = rest
 skipSpaces rest = rest
@@ -52,7 +48,7 @@ readVariables (var:vars) str =
         skipped = (skipSpaces cur)
     in
     if (length cur) == 0 then
-        (Right([], var:vars))
+        Right ([], var:vars)
     else 
         (readVariables vars rest) >>= 
         \(vals, leftVars) ->
@@ -64,6 +60,17 @@ readVariables (var:vars) str =
                 Left $ EvalErrorReading $ cur
 
 readVariables [] _ = Right $ ([], [])
+
+applyVariables :: [(String, Value)] -> VariableMap -> VariableMap
+applyVariables = flip (foldl (\acc (k,v) -> mapInsert (NamespaceVisible, k) v acc))
+
+-- statement executors
+
+goto :: Namespace -> Int -> EvalContext -> IO (Either EvalError EvalContext)
+goto t l context = do
+    case (mapLookup (t, l) (gotoMap context)) of
+        Just(res) -> execBlock context res
+        Nothing -> return $ Left $ EvalErrorLabelNotFound l
 
 execBlock :: EvalContext -> [Stmt] -> IO (Either EvalError EvalContext)
 
@@ -100,8 +107,8 @@ execBlock context ((StmtComputedGoto labels expr):stmts) = do
                         execBlock context stmts
                     else 
                         goto NamespaceVisible (labels !! (fromIntegral (val-1))) context
-                Nothing -> return $ Left(EvalErrorIncompatibleTypes)
-        Left(err) -> return $ Left(err)
+                Nothing -> return $ Left $ EvalErrorIncompatibleTypes
+        Left(err) -> return $ Left $ err
 
 execBlock context ((StmtLabeled _ stmt):stmts) = execBlock context (stmt:stmts)
 
@@ -126,9 +133,6 @@ execBlock context (StmtWrite(exprs):stmts) = do
 execBlock context (StmtNoop:stmts) = execBlock context stmts
 
 execBlock context [] = return $ Right $ context
-
-applyVariables :: [(String, Value)] -> VariableMap -> VariableMap
-applyVariables = flip (foldl (\acc (k,v) -> mapInsert (NamespaceVisible, k) v acc))
 
 execRead :: EvalContext -> [String] -> IO (Either EvalError EvalContext)
 execRead context vars = do
@@ -161,7 +165,7 @@ execWrite context [] = do
 eval :: EvalContext -> Expr -> EvalResult
 
 eval ctx (ExprBin a op b)    = handleBinaryEvalResults (eval ctx a) op (eval ctx b)
-eval ctx (ExprUn op a)        = handleUnaryEvalResult op (eval ctx a)
+eval ctx (ExprUn op a)       = handleUnaryEvalResult op (eval ctx a)
 eval _ (ExprString val)      = Right $ ValueString val
 eval _ (ExprInteger val)     = Right $ ValueInteger val
 eval _ (ExprFloat val)       = Right $ ValueFloat val
@@ -182,39 +186,47 @@ handleBinaryEvalResults (Left err) _ _                 = Left err
 handleBinaryEvalResults _ _ (Left err)                 = Left err
 
 evalBinary :: Value -> BinaryOp -> Value -> EvalResult
-evalBinary (ValueInteger a) BinOpAdd  (ValueInteger b) = Right $ ValueInteger $ a+b
-evalBinary (ValueInteger a) BinOpSub  (ValueInteger b) = Right $ ValueInteger $ a-b
-evalBinary (ValueInteger a) BinOpMult (ValueInteger b) = Right $ ValueInteger $ a*b
-evalBinary (ValueInteger a) BinOpDiv  (ValueInteger b) = Right $ ValueInteger $ a`div`b
-evalBinary (ValueInteger a) BinOpPow  (ValueInteger b) = Right $ ValueInteger $ a^b
 
-evalBinary (ValueInteger a) BinOpEq   (ValueInteger b) = Right $ ValueBool $ a == b
-evalBinary (ValueInteger a) BinOpNeq  (ValueInteger b) = Right $ ValueBool $ a /= b
-evalBinary (ValueInteger a) BinOpGt   (ValueInteger b) = Right $ ValueBool $ a > b
-evalBinary (ValueInteger a) BinOpGeq  (ValueInteger b) = Right $ ValueBool $ a >= b
-evalBinary (ValueInteger a) BinOpLt   (ValueInteger b) = Right $ ValueBool $ a < b
-evalBinary (ValueInteger a) BinOpLeq  (ValueInteger b) = Right $ ValueBool $ a <= b
+evalBinary (ValueInteger a) op (ValueInteger b) = 
+    case op of 
+        BinOpAdd    -> return $ ValueInteger $ a + b
+        BinOpSub    -> return $ ValueInteger $ a - b
+        BinOpMult   -> return $ ValueInteger $ a * b
+        BinOpDiv    -> return $ ValueInteger $ a `div` b
+        BinOpPow    -> return $ ValueInteger $ a ^ b
+        BinOpEq     -> return $ ValueBool    $ a == b
+        BinOpNeq    -> return $ ValueBool    $ a /= b
+        BinOpGt     -> return $ ValueBool    $ a >  b
+        BinOpGeq    -> return $ ValueBool    $ a >= b
+        BinOpLt     -> return $ ValueBool    $ a <  b
+        BinOpLeq    -> return $ ValueBool    $ a <= b
+        _           -> Left EvalErrorInvalidOp
 
-evalBinary (ValueFloat a)   BinOpAdd  (ValueFloat b)   = Right $ ValueFloat $ a+b
-evalBinary (ValueFloat a)   BinOpSub  (ValueFloat b)   = Right $ ValueFloat $ a-b
-evalBinary (ValueFloat a)   BinOpMult (ValueFloat b)   = Right $ ValueFloat $ a*b
-evalBinary (ValueFloat a)   BinOpDiv  (ValueFloat b)   = Right $ ValueFloat $ a/b
-evalBinary (ValueFloat a)   BinOpPow  (ValueFloat b)   = Right $ ValueFloat $ a**b
-
-evalBinary (ValueFloat a) BinOpEq   (ValueFloat b) = Right $ ValueBool $ a == b
-evalBinary (ValueFloat a) BinOpNeq  (ValueFloat b) = Right $ ValueBool $ a /= b
-evalBinary (ValueFloat a) BinOpGt   (ValueFloat b) = Right $ ValueBool $ a > b
-evalBinary (ValueFloat a) BinOpGeq  (ValueFloat b) = Right $ ValueBool $ a >= b
-evalBinary (ValueFloat a) BinOpLt   (ValueFloat b) = Right $ ValueBool $ a < b
-evalBinary (ValueFloat a) BinOpLeq  (ValueFloat b) = Right $ ValueBool $ a <= b
+evalBinary (ValueFloat a) op (ValueFloat b) = 
+    case op of 
+        BinOpAdd    -> return $ ValueFloat   $ a + b
+        BinOpSub    -> return $ ValueFloat   $ a - b
+        BinOpMult   -> return $ ValueFloat   $ a * b
+        BinOpDiv    -> return $ ValueFloat   $ a / b
+        BinOpPow    -> return $ ValueFloat   $ a ** b
+        BinOpEq     -> return $ ValueBool    $ a == b
+        BinOpNeq    -> return $ ValueBool    $ a /= b
+        BinOpGt     -> return $ ValueBool    $ a >  b
+        BinOpGeq    -> return $ ValueBool    $ a >= b
+        BinOpLt     -> return $ ValueBool    $ a <  b
+        BinOpLeq    -> return $ ValueBool    $ a <= b
+        _           -> Left EvalErrorInvalidOp
 
 evalBinary (ValueInteger(a)) op (ValueFloat(b))    = evalBinary (ValueFloat $ fromIntegral a) op (ValueFloat b)
 evalBinary (ValueFloat(a))   op (ValueInteger(b))  = evalBinary (ValueFloat a) op (ValueFloat $ fromIntegral b)
 
-evalBinary (ValueBool a) BinOpAnd  (ValueBool b) = Right $ ValueBool $ a && b
-evalBinary (ValueBool a) BinOpOr   (ValueBool b) = Right $ ValueBool $ a || b
-evalBinary (ValueBool a) BinOpEq   (ValueBool b) = Right $ ValueBool $ a == b
-evalBinary (ValueBool a) BinOpNeq  (ValueBool b) = Right $ ValueBool $ a /= b
+evalBinary (ValueBool a) op (ValueBool b) = 
+    case op of
+        BinOpAnd    -> return $ ValueBool $ a && b
+        BinOpOr     -> return $ ValueBool $ a || b
+        BinOpEq     -> return $ ValueBool $ a == b
+        BinOpNeq    -> return $ ValueBool $ a /= b
+        _           -> Left EvalErrorInvalidOp
 
 evalBinary _ _ _ = Left EvalErrorInvalidOp
 
@@ -230,21 +242,23 @@ evalUnary UnOpPlus  (ValueFloat a)      = return $ ValueFloat   $ a
 
 evalUnary _ _           = Left EvalErrorInvalidOp
 
+-- eval conversion utils
+
 truthy :: Value -> Bool
-truthy (ValueBool a) = a
+truthy (ValueBool a)    = a
 truthy (ValueInteger a) = a /= 0
-truthy (ValueFloat a) = a /= 0
-truthy (ValueString a) = (length a) /= 0
+truthy (ValueFloat a)   = a /= 0
+truthy (ValueString a)  = (length a) /= 0
 
 castToInt :: Value -> Maybe Int
-castToInt (ValueBool a) = Just $ if a then 1 else 0
-castToInt (ValueInteger a) = Just $ a
-castToInt (ValueFloat a) = Just $ floor a
-castToInt (ValueString _) = Nothing
+castToInt (ValueBool a)     = Just $ if a then 1 else 0
+castToInt (ValueInteger a)  = Just $ a
+castToInt (ValueFloat a)    = Just $ floor a
+castToInt (ValueString _)   = Nothing
 
 castToFloat :: Value -> Maybe Double
-castToFloat (ValueBool a) = Just $ if a then 1 else 0
-castToFloat (ValueInteger a) = Just $ fromIntegral $ a
-castToFloat (ValueFloat a) = Just $ a
-castToFloat (ValueString _) = Nothing
+castToFloat (ValueBool a)       = Just $ if a then 1 else 0
+castToFloat (ValueInteger a)    = Just $ fromIntegral $ a
+castToFloat (ValueFloat a)      = Just $ a
+castToFloat (ValueString _)     = Nothing
 

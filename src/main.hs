@@ -27,7 +27,7 @@ main = do
                     let parsed = (program $ newParserState $ fst tokens) in
                     case parsed of 
                         Right(StmtBlockType(stmts), _) -> do
-                            --putStrLn $ show $ parsed
+                            putStrLn $ show $ parsed
                             let execResult = (execBlock (evalContext (createGotoMap stmts simpleMap)) stmts) 
                             execResult >>=
                                 \result ->

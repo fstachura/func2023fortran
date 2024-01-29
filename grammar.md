@@ -59,7 +59,7 @@ or-operand = and-operand {and-op and-operand}
 and-operand = [not-op] level-4-expr
 level-4-expr = level-2-expr {rel-op level-2-expr}
 level-2-expr = [sign] add-operand {add-op add-operand}
-add-operand = mult-operand {mult-op add-operand}
+add-operand = mult-operand {mult-op mult-operand}
 mult-operand = primary [power-op mult-operand]
 
 primary = literal | variable | '(' expr ')' | function-call

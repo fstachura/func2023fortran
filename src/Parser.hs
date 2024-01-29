@@ -106,7 +106,7 @@ matchTokenOrFail token state =
 
 matchKeywordWithoutAdvance :: String -> ParserState -> Maybe ParserState
 matchKeywordWithoutAdvance s state@ParserState{ tokensLeft=(TokenWithInfo{token=(TokenIdentifier(is))}:_) }
-    | ((strToLower s) == (strToLower is)) = Just(state)
+    | ((strToLower s) == (strToLower is)) = Just state
     | otherwise                           = Nothing
 matchKeywordWithoutAdvance _ _ = Nothing
 
@@ -185,8 +185,7 @@ parseUnary tokens f orgState =
         (\state -> 
             convertToUnaryExpr 
                 (previousToken state)
-                (f state)
-        )
+                (f state))
         (matchToken tokens orgState)
     where res = (f orgState)
 
@@ -242,7 +241,7 @@ orOperand       = parseBinaryRightLoop  andOperand [TokenAnd] andOperand
 andOperand      = parseUnary            [TokenNot] level4Expr
 level4Expr      = parseBinaryRightLoop  level2Expr relOperators level2Expr 
 level2Expr      = parseUnary            signOperators (parseBinaryRightLoop addOperand addOperators addOperand)
-addOperand      = parseBinaryRightLoop  multOperand multOperators addOperand
+addOperand      = parseBinaryRightLoop  multOperand multOperators multOperand
 multOperand     = parseBinaryRightLoop  primary [TokenPow] multOperand
 
 functionCall state = 
@@ -320,7 +319,7 @@ executionPart state =
     `altM` 
     (executableConstruct state)
 
--- if parser and flattener (the most cursed thing in this project)
+-- if parser and flattener 
 
 matchIfPrelude state =
     (matchKeyword "if" state) >>=
@@ -398,6 +397,8 @@ ifConstruct state =
                                                     (advanceIfLabel postElseIfState)))
                                     (ifConstruct preNewIfState)
 
+-- do parser and flattener
+
 tryMatchIncrement postLimitState =
     case (matchToken [TokenComma] postLimitState) of
         Nothing ->
@@ -452,6 +453,8 @@ doConstruct state = do
                             postDoStatementState)
             _ -> Left $ ParserErrorUnknown $ currentTokenWithInfo postAssignmentState
 
+-- other contructs and statements
+
 executableConstruct state = 
     (actionStmt state)  `altM`
     (ifConstruct state) `altM`
@@ -468,7 +471,6 @@ gotoStmt state =
         \(label, state) ->
             Right(StmtAbsoluteGoto (NamespaceVisible, label), state)
 
--- TODO optional comma after list
 computedGotoStmt state = 
     (matchGoTo state) >>=
     (matchToken [TokenLeftParen]) >>=
