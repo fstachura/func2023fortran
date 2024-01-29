@@ -1,10 +1,10 @@
-module GotoMap (
+module Eval.GotoMap (
     GotoMap,
     createGotoMap
 ) where
 
-import AstTypes
-import Map
+import Ast.AstTypes
+import Utils.Map
 
 type GotoMap = SimpleMap (Namespace, Int) [Stmt]
 

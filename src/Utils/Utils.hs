@@ -1,4 +1,4 @@
-module Utils (
+module Utils.Utils (
     maybeOr,
     lowercaseLetters,
     uppercaseLetters,

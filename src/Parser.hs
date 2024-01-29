@@ -4,10 +4,10 @@ module Parser (
     newParserState
 ) where
 
-import AstTypes
-import TokenTypes
-import Utils
 import Debug.Trace
+import Ast.AstTypes
+import Ast.TokenTypes
+import Utils.Utils
 
 -- parser state
 

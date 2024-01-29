@@ -1,12 +1,12 @@
 import System.Environment
 import System.IO
+import Ast.AstTypes
+import Eval.Eval
+import Eval.GotoMap
+import Utils.Map
+import Utils.Utils
 import Lexer
 import Parser
-import Utils
-import Eval
-import GotoMap
-import Map
-import AstTypes
 
 -- goto map 
 -- ifs and dos push their own goto map so that jumping into ifs is impossible

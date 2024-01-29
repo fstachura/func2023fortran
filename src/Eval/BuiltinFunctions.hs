@@ -1,9 +1,8 @@
-module BuiltinFunctions (
+module Eval.BuiltinFunctions (
     defaultFunctionMap
 ) where
 
-import Map
-import EvalTypes
+import Eval.EvalTypes
 
 defaultFunctionMap = [
         ("mod", modFunction),

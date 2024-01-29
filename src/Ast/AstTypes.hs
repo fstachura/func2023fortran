@@ -1,4 +1,4 @@
-module AstTypes (
+module Ast.AstTypes (
     Expr(..),
     BinaryOp(..),
     UnaryOp(..),

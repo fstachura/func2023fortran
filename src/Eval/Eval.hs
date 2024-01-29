@@ -1,15 +1,15 @@
-module Eval (
+module Eval.Eval (
     eval,
     execBlock,
     evalContext
 ) where
 
 import Debug.Trace
-import EvalTypes
-import BuiltinFunctions
-import AstTypes
-import Map
-import Utils
+import Ast.AstTypes
+import Utils.Map
+import Utils.Utils
+import Eval.BuiltinFunctions
+import Eval.EvalTypes
 
 evalContext gotoMap = EvalContext { 
     variableMap=simpleMap,

@@ -1,4 +1,4 @@
-module EvalTypes (
+module Eval.EvalTypes (
     Value(..),
     EvalError(..),
     EvalContext(..),
@@ -8,9 +8,9 @@ module EvalTypes (
     FunctionMap
 ) where
 
-import AstTypes
-import Map
-import GotoMap
+import Ast.AstTypes
+import Utils.Map
+import Eval.GotoMap
 
 data Value = 
     ValueInteger Int

@@ -1,4 +1,4 @@
-module TokenTypes (
+module Ast.TokenTypes (
     Token(..),
     TokenWithInfo(..),
     TokenLocation(..),
@@ -14,7 +14,7 @@ module TokenTypes (
     simpleTokenMap 
 ) where
 
-import Utils
+import Utils.Utils
 
 data Token = 
     TokenEqEq | TokenNeq | TokenLt | TokenLeq | TokenGt | TokenGeq |

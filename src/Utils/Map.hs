@@ -1,4 +1,4 @@
-module Map (
+module Utils.Map (
     SimpleMap,
     mapLookup,
     mapInsert,

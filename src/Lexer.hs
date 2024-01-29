@@ -5,9 +5,9 @@ module Lexer (
     LexingResult(..)
 ) where
 
-import Utils
-import TokenTypes
 import Debug.Trace
+import Ast.TokenTypes
+import Utils.Utils
 
 -- lexing utils
 
