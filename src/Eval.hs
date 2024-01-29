@@ -235,11 +235,11 @@ handleUnaryEvalResult :: UnaryOp -> EvalResult -> EvalResult
 handleUnaryEvalResult op (Right a) = evalUnary op a
 handleUnaryEvalResult _ (Left err) = (Left err)
 
-evalUnary UnOpNot   (ValueBool a)       = (Right $ ValueBool    $ not    $ a)
-evalUnary UnOpMinus (ValueInteger a)    = (Right $ ValueInteger $ negate $ a)
-evalUnary UnOpPlus  (ValueInteger a)    = (Right $ ValueInteger $ negate $ a)
-evalUnary UnOpMinus (ValueFloat a)      = (Right $ ValueFloat   $ negate $ a)
-evalUnary UnOpPlus  (ValueFloat a)      = (Right $ ValueFloat   $ negate $ a)
+evalUnary UnOpNot   (ValueBool a)       = return $ ValueBool    $ not    $ a
+evalUnary UnOpMinus (ValueInteger a)    = return $ ValueInteger $ negate $ a
+evalUnary UnOpPlus  (ValueInteger a)    = return $ ValueInteger $ a
+evalUnary UnOpMinus (ValueFloat a)      = return $ ValueFloat   $ negate $ a
+evalUnary UnOpPlus  (ValueFloat a)      = return $ ValueFloat   $ a
 
 evalUnary _ _           = (Left EvalErrorInvalidOp)
 

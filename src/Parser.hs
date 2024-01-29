@@ -10,6 +10,8 @@ import Utils
 import Map
 import Debug.Trace
 
+-- parser state
+
 data ParserState = ParserState {
     tokensLeft :: [TokenWithInfo],
     previousToken :: Maybe(TokenWithInfo),
@@ -62,6 +64,8 @@ advanceDoVarNum state@ParserState { lastDoVarNum=l } = state {
     lastDoVarNum=(l+1)
 }
 
+-- token to operators converters
+
 tokenToBinaryOp :: Token -> Maybe(BinaryOp)
 tokenToBinaryOp TokenEqEq   = Just(BinOpEq)
 tokenToBinaryOp TokenEq     = Just(BinOpEq)
@@ -86,6 +90,8 @@ tokenToUnaryOp TokenNot     = Just(UnOpNot)
 tokenToUnaryOp TokenMinus   = Just(UnOpMinus)
 tokenToUnaryOp TokenPlus    = Just(UnOpPlus)
 tokenToUnaryOp _            = Nothing
+
+-- utilities
 
 matchToken :: [Token] -> ParserState -> Maybe(ParserState)
 matchToken tokens state@ParserState{ tokensLeft=(TokenWithInfo{token=t}:ts) }
@@ -174,23 +180,21 @@ parseBinaryRightLoop :: ExprParsingFunction -> [Token] -> ExprParsingFunction ->
 parseBinaryRightLoop a operators b state =
     (a state) >>= whileMatchesRight operators b
 
-parseUnaryLeftLoop :: ExprParsingFunction -> [Token] -> ParserState -> ExprParseResult
-parseUnaryLeftLoop f tokens orgState =
+parseUnary :: [Token] -> ExprParsingFunction -> ParserState -> ExprParseResult
+parseUnary tokens f orgState =
     maybeOr
         res
         (\state -> 
             convertToUnaryExpr 
                 (previousToken state)
-                (parseUnaryLeftLoop f tokens state)
+                (f state)
         )
         (matchToken tokens orgState)
     where res = (f orgState)
 
--- advance expr parse result
+
 advanceResult :: ExprParseResult -> ExprParseResult
 advanceResult = (flip (>>=)) (\(expr, state) -> Right(expr, (advanceParser state)))
-
--- list matchers
 
 exprList :: ParserState -> (Either ParserError ([Expr], ParserState))
 exprList = matchList expression
@@ -215,14 +219,20 @@ matchList f orgState =
                     (Right(el:elList, postElListState)))
             (matchToken [TokenComma] postElState)
 
+skipSemicolons :: ParserState -> ParserState
+skipSemicolons state =
+    maybeOr
+        state
+        (skipSemicolons)
+        (matchToken [TokenSemicolon] state)
+
+-- parsers
+
 type ExprParsingFunction                = ParserState -> ExprParseResult
 type StmtParsingFunction                = ParserState -> StmtParseResult
 type ConstructParsingFunction           = ParserState -> ConstructParseResult
 type OptionalConstructParsingFunction   = ParserState -> OptionalConstructParseResult
 type OptionalStmtParsingFunction        = ParserState -> OptionalStmtParseResult
-
---    elseIfStmt, elseStmt,
---    loopControl, 
 
 program :: ConstructParsingFunction
 
@@ -232,26 +242,24 @@ executionPart, executableConstruct,
 assignmentStmt, gotoStmt, ifStmt, computedGotoStmt,
     writeStmt, readStmt :: OptionalStmtParsingFunction
 
-expression, equivalence, equivOperand, 
-    orOperand, 
-    andOperand, level4Expr, level2Expr, addOperand, 
-    multOperand, level1Expr, 
+expression, 
+    equivalence, equivOperand, 
+    orOperand, andOperand, 
+    level4Expr, level2Expr, 
+    addOperand, multOperand, 
     primary :: ExprParsingFunction
 
 -- expression parsers
 
 expression      = equivalence
-equivalence     = parseBinaryRightLoop equivOperand equivOperators equivOperand
-equivOperand    = parseBinaryRightLoop orOperand [TokenOr] orOperand
-orOperand       = parseBinaryRightLoop andOperand [TokenAnd] andOperand
-andOperand      = parseUnaryLeftLoop level4Expr unaryOperators 
-level4Expr      = parseBinaryRightLoop level2Expr relOperators level2Expr 
--- TODO addOperand loop (?)
-level2Expr      = parseBinaryRightLoop addOperand addOperators addOperand 
-addOperand      = parseBinaryRightLoop multOperand multOperators addOperand
-multOperand     = parseBinaryRightLoop level1Expr [TokenPow] multOperand
-level1Expr      = parseUnaryLeftLoop primary unaryOperators 
--- TODO calls
+equivalence     = parseBinaryRightLoop  equivOperand equivOperators equivOperand
+equivOperand    = parseBinaryRightLoop  orOperand [TokenOr] orOperand
+orOperand       = parseBinaryRightLoop  andOperand [TokenAnd] andOperand
+andOperand      = parseUnary            [TokenNot] level4Expr
+level4Expr      = parseBinaryRightLoop  level2Expr relOperators level2Expr 
+level2Expr      = parseUnary            signOperators (parseBinaryRightLoop addOperand addOperators addOperand)
+addOperand      = parseBinaryRightLoop  multOperand multOperators addOperand
+multOperand     = parseBinaryRightLoop  primary [TokenPow] multOperand
 
 functionCall state = 
     (matchIdentifierOrFail state) >>=
@@ -287,13 +295,6 @@ primary state@ParserState { tokensLeft=(twi@TokenWithInfo{token=t}:ts) } =
         otherwise -> Left(ParserErrorExpectedExpression(twi))
 
 -- statement parsers
-
-skipSemicolons :: ParserState -> ParserState
-skipSemicolons state =
-    maybeOr
-        state
-        (skipSemicolons)
-        (matchToken [TokenSemicolon] state)
 
 program state = 
     (matchKeywordOrFail "program" (skipSemicolons state)) >>=

@@ -7,6 +7,7 @@ module TokenTypes (
     addOperators,
     multOperators,
     unaryOperators,
+    signOperators,
     newTokenLocation
 ) where
 
@@ -31,6 +32,7 @@ relOperators = [TokenEqEq, TokenNeq, TokenLt, TokenLeq, TokenGt, TokenGeq]
 addOperators = [TokenPlus, TokenMinus]
 multOperators = [TokenStar, TokenSlash]
 unaryOperators = [TokenNot, TokenPlus, TokenMinus]
+signOperators  = [TokenPlus, TokenMinus]
 
 data TokenLocation = TokenLocation {
     tokenPos :: Int,
