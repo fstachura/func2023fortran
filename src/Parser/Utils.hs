@@ -3,7 +3,12 @@ module Parser.Utils (
     matchTokenOrFail,
     matchIdentifier,
     matchIdentifierOrFail,
-    matchList
+    matchList,
+    matchInteger,
+    matchIntegerOrFail,
+    matchKeyword,
+    matchKeywordOrFail,
+    skipSemicolons,
 ) where
 
 import Ast.TokenTypes
@@ -48,4 +53,33 @@ matchList f orgState =
                 \(elList, postElListState) ->
                     (Right(el:elList, postElListState)))
             (matchToken [TokenComma] postElState)
+
+matchKeyword :: String -> ParserState -> Maybe ParserState
+matchKeyword s state = (matchKeywordWithoutAdvance s state) >>= (Just . advanceParser)
+
+matchKeywordOrFail :: String -> ParserState -> Either ParserError ParserState
+matchKeywordOrFail keyword state = 
+    maybeOr
+        (Left $ ParserErrorExpectedKeyword (currentTokenWithInfo state) keyword)
+        (Right . id)
+        (matchKeyword keyword state)
+
+matchInteger :: ParserState -> Maybe (Int, ParserState)
+matchInteger state@ParserState{ tokensLeft=(TokenWithInfo{token=(TokenInteger(i))}:_) } = 
+    (Just(i, (advanceParser state)))
+matchInteger _ = Nothing
+
+matchIntegerOrFail :: ParserState -> Either ParserError (Int, ParserState)
+matchIntegerOrFail state = 
+    maybeOr
+        (Left $ ParserErrorExpectedInteger $ currentTokenWithInfo state)
+        (Right . id)
+        (matchInteger state)
+
+skipSemicolons :: ParserState -> ParserState
+skipSemicolons state =
+    maybeOr
+        state
+        (skipSemicolons)
+        (matchToken [TokenSemicolon] state)
 

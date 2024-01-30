@@ -23,41 +23,6 @@ type ConstructParseResult           = Either ParserError (StmtBlockType, ParserS
 type OptionalConstructParseResult   = Maybe (Either ParserError ([Stmt], ParserState))
 type OptionalStmtParseResult        = Maybe (Either ParserError (Stmt, ParserState))
 
-matchKeywordWithoutAdvance :: String -> ParserState -> Maybe ParserState
-matchKeywordWithoutAdvance s state@ParserState{ tokensLeft=(TokenWithInfo{token=(TokenIdentifier(is))}:_) }
-    | ((strToLower s) == (strToLower is)) = Just state
-    | otherwise                           = Nothing
-matchKeywordWithoutAdvance _ _ = Nothing
-
-matchKeyword :: String -> ParserState -> Maybe ParserState
-matchKeyword s state = (matchKeywordWithoutAdvance s state) >>= (Just . advanceParser)
-
-matchKeywordOrFail :: String -> ParserState -> Either ParserError ParserState
-matchKeywordOrFail keyword state = 
-    maybeOr
-        (Left $ ParserErrorExpectedKeyword (currentTokenWithInfo state) keyword)
-        (Right . id)
-        (matchKeyword keyword state)
-
-matchInteger :: ParserState -> Maybe (Int, ParserState)
-matchInteger state@ParserState{ tokensLeft=(TokenWithInfo{token=(TokenInteger(i))}:_) } = 
-    (Just(i, (advanceParser state)))
-matchInteger _ = Nothing
-
-matchIntegerOrFail :: ParserState -> Either ParserError (Int, ParserState)
-matchIntegerOrFail state = 
-    maybeOr
-        (Left $ ParserErrorExpectedInteger $ currentTokenWithInfo state)
-        (Right . id)
-        (matchInteger state)
-
-skipSemicolons :: ParserState -> ParserState
-skipSemicolons state =
-    maybeOr
-        state
-        (skipSemicolons)
-        (matchToken [TokenSemicolon] state)
-
 type ConstructParsingFunction           = ParserState -> ConstructParseResult
 type OptionalConstructParsingFunction   = ParserState -> OptionalConstructParseResult
 type OptionalStmtParsingFunction        = ParserState -> OptionalStmtParseResult
@@ -156,7 +121,8 @@ parseIfBody condExpr preIfBlockState = do
                         ifStmts) ++ extraEndGoto,
                         postIfState)
         Just(postElseState) -> 
-            case (matchKeywordWithoutAdvance "if" $ skipSemicolons postElseState) of
+            let preNewIfState = (skipSemicolons postElseState) in
+            case (matchKeyword "if" preNewIfState) of
                 Nothing -> do
                     (StmtBlockType(elseStmts), postElseState) <- block postElseState
                     postIfState <- matchIfEnd postElseState
@@ -167,7 +133,7 @@ parseIfBody condExpr preIfBlockState = do
                                 ((lastIfLabel postIfState)+1)
                                 elseStmts,
                                 (advanceIfLabel postIfState))
-                Just(preNewIfState) -> 
+                Just(_) -> 
                     maybeOr
                         (Left $ ParserErrorExpectedIfConstruct $ 
                             (currentTokenWithInfo preNewIfState))
