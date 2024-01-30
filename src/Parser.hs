@@ -351,51 +351,48 @@ tryMatchEndGoto state =
             Right([StmtLabeled (NamespaceVisible, endLabel) StmtNoop], state))
         (matchInteger (skipSemicolons state))
 
-ifConstruct state = 
-    (matchIfPrelude state) >>=
-    \result -> Just $ result >>=
-        \(condExpr, preIfBlockState) ->
-            (block (advanceIfLabel preIfBlockState)) >>=
-            \(StmtBlockType(ifStmts), postBlockState) ->
-                case (matchKeyword "else" (skipSemicolons postBlockState)) of
-                    Nothing -> 
-                        (tryMatchEndGoto postBlockState) >>=
-                        \(extraEndGoto, state) ->
-                            (matchIfEnd state) >>=
-                            \(postIfState) -> 
-                                Right $ ((compileSimpleIf 
-                                            condExpr 
-                                            (lastIfLabel preIfBlockState) 
-                                            ifStmts) ++ extraEndGoto,
-                                        postIfState)
-                    Just(postElseState) -> 
-                        case (matchKeywordWithoutAdvance "if" $ skipSemicolons postElseState) of
-                            Nothing ->  
-                                (block postElseState) >>=
-                                \(StmtBlockType(elseStmts), postElseState) ->
-                                    (matchIfEnd postElseState) >>=
-                                    \(postIfState) ->
-                                        Right $ (compileElseIf
-                                                    condExpr
-                                                    (lastIfLabel preIfBlockState)
-                                                    ifStmts
-                                                    ((lastIfLabel postIfState)+1)
-                                                    elseStmts,
-                                                (advanceIfLabel postIfState))
-                            Just(preNewIfState) -> 
-                                maybeOr
-                                    (Left $ ParserErrorExpectedIfConstruct $ 
-                                        (currentTokenWithInfo preNewIfState))
-                                    (\result -> result >>= 
-                                        \(fstElseStmts, postElseIfState) -> 
-                                            Right $ (compileElseIf
-                                                        condExpr
-                                                        (lastIfLabel preIfBlockState)
-                                                        ifStmts 
-                                                        ((lastIfLabel postElseIfState)+1)
-                                                        fstElseStmts,
-                                                    (advanceIfLabel postElseIfState)))
-                                    (ifConstruct preNewIfState)
+parseIfBody condExpr preIfBlockState = do
+    (StmtBlockType(ifStmts), postBlockState) <- block (advanceIfLabel preIfBlockState)
+    case (matchKeyword "else" (skipSemicolons postBlockState)) of
+        Nothing -> do
+            (extraEndGoto, state) <- tryMatchEndGoto postBlockState
+            postIfState <- matchIfEnd state
+            return $ ((compileSimpleIf 
+                        condExpr 
+                        (lastIfLabel preIfBlockState) 
+                        ifStmts) ++ extraEndGoto,
+                        postIfState)
+        Just(postElseState) -> 
+            case (matchKeywordWithoutAdvance "if" $ skipSemicolons postElseState) of
+                Nothing -> do
+                    (StmtBlockType(elseStmts), postElseState) <- block postElseState
+                    postIfState <- matchIfEnd postElseState
+                    return $ (compileElseIf
+                                condExpr
+                                (lastIfLabel preIfBlockState)
+                                ifStmts
+                                ((lastIfLabel postIfState)+1)
+                                elseStmts,
+                                (advanceIfLabel postIfState))
+                Just(preNewIfState) -> 
+                    maybeOr
+                        (Left $ ParserErrorExpectedIfConstruct $ 
+                            (currentTokenWithInfo preNewIfState))
+                        (\result -> result >>= 
+                            \(fstElseStmts, postElseIfState) -> 
+                                Right $ (compileElseIf
+                                            condExpr
+                                            (lastIfLabel preIfBlockState)
+                                            ifStmts 
+                                            ((lastIfLabel postElseIfState)+1)
+                                            fstElseStmts,
+                                        (advanceIfLabel postElseIfState)))
+                        (ifConstruct preNewIfState)
+
+ifConstruct state = do
+    result <- matchIfPrelude state
+    return $ result >>= 
+        \(expr, state) -> parseIfBody expr state
 
 -- do parser and flattener
 
@@ -408,50 +405,52 @@ tryMatchIncrement postLimitState =
             \(incrementExpr, postIncrementState) ->
                 (Right(incrementExpr, postIncrementState))
 
+parseDoBody assignment@(StmtAssign var _) postAssignmentState = do
+    state <- matchTokenOrFail TokenComma postAssignmentState
+    (limitExpr, postLimitState) <- expression state
+    (incExpr, postIncrementState) <- tryMatchIncrement postLimitState
+    let doNum           = (lastDoVarNum state) 
+        doEndNum        = (lastDoVarNum state) + 1
+        doLimit         = (NamespaceDo, "l" ++ (show doNum))
+        doInc           = (NamespaceDo, "i" ++ (show doNum)) 
+        postLblState    = (advanceDoVarNum (advanceDoVarNum postIncrementState))
+    (block postLblState) >>=
+        \(StmtBlockType(fstDoBlock:doBlock), postBlockState) -> do
+            (extraEndGoto, state) <- tryMatchEndGoto postBlockState
+            state <- matchKeywordOrFail "end" (skipSemicolons state)
+            postDoStatementState <- matchKeywordOrFail "do" state
+            return $ (
+                assignment:
+                (StmtAssign doLimit limitExpr):
+                (StmtAssign doInc incExpr):
+                (StmtLabeled (NamespaceDo, doNum) fstDoBlock):
+                doBlock ++
+                (StmtIntCompiledIf
+                    (ExprBin
+                        (ExprIdentifier var)
+                        BinOpGeq
+                        (ExprIdentifier doLimit))
+                    (NamespaceDo, doEndNum)):
+                (StmtAssign
+                    var
+                    (ExprBin
+                        (ExprIdentifier var)
+                        BinOpAdd
+                        (ExprIdentifier doInc))):
+                (StmtAbsoluteGoto (NamespaceDo, doNum)):
+                (StmtLabeled (NamespaceDo, doEndNum) StmtNoop):extraEndGoto,
+                postDoStatementState)
+
+parseDoBody _ postAssignmentState =
+    Left $ ParserErrorUnknown $ currentTokenWithInfo postAssignmentState
+
 doConstruct state = do
     state <- (matchKeyword "do" state)
     let crttoken      = currentTokenWithInfo state
         assignmentErr = Just $ Left $ ParserErrorExpectedAssignment crttoken 
     result <- (assignmentStmt state) `altM` assignmentErr
-    return $ do
-        (assignment, postAssignmentState) <- result
-        case assignment of 
-            StmtAssign var _ -> do
-                state <- matchTokenOrFail TokenComma postAssignmentState
-                (limitExpr, postLimitState) <- expression state
-                (incExpr, postIncrementState) <- tryMatchIncrement postLimitState
-                let doNum           = (lastDoVarNum state) 
-                    doEndNum        = (lastDoVarNum state) + 1
-                    doLimit         = (NamespaceDo, "l" ++ (show doNum))
-                    doInc           = (NamespaceDo, "i" ++ (show doNum)) 
-                    postLblState    = (advanceDoVarNum (advanceDoVarNum postIncrementState))
-                (block postLblState) >>=
-                    \(StmtBlockType(fstDoBlock:doBlock), postBlockState) -> do
-                        (extraEndGoto, state) <- tryMatchEndGoto postBlockState
-                        state <- matchKeywordOrFail "end" (skipSemicolons state)
-                        postDoStatementState <- matchKeywordOrFail "do" state
-                        return $ (
-                            assignment:
-                            (StmtAssign doLimit limitExpr):
-                            (StmtAssign doInc incExpr):
-                            (StmtLabeled (NamespaceDo, doNum) fstDoBlock):
-                            doBlock ++
-                            (StmtIntCompiledIf
-                                (ExprBin
-                                    (ExprIdentifier var)
-                                    BinOpGeq
-                                    (ExprIdentifier doLimit))
-                                (NamespaceDo, doEndNum)):
-                            (StmtAssign
-                                var
-                                (ExprBin
-                                    (ExprIdentifier var)
-                                    BinOpAdd
-                                    (ExprIdentifier doInc))):
-                            (StmtAbsoluteGoto (NamespaceDo, doNum)):
-                            (StmtLabeled (NamespaceDo, doEndNum) StmtNoop):extraEndGoto,
-                            postDoStatementState)
-            _ -> Left $ ParserErrorUnknown $ currentTokenWithInfo postAssignmentState
+    return $ result >>=
+        \(assignment, postAssignmentState) -> parseDoBody assignment postAssignmentState
 
 -- other contructs and statements
 

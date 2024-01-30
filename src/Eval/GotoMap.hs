@@ -12,3 +12,4 @@ createGotoMap :: [Stmt] -> GotoMap -> GotoMap
 createGotoMap [] = id
 createGotoMap (stmt@(StmtLabeled (lt, l) _):stmts) = createGotoMap stmts . (mapInsert (lt, l) (stmt:stmts))
 createGotoMap (_:stmts) = createGotoMap stmts
+
