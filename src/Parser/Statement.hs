@@ -10,14 +10,6 @@ import Parser.Expression
 import Parser.Utils
 import Parser.State
 
-advanceIfLabel state@ParserState { lastIfLabel=l } = state {
-    lastIfLabel=(l+1)
-}
-
-advanceDoVarNum state@ParserState { lastDoVarNum=l } = state {
-    lastDoVarNum=(l+1)
-}
-
 type StmtParseResult                = Either ParserError (Stmt, ParserState)
 type ConstructParseResult           = Either ParserError (StmtBlockType, ParserState)
 type OptionalConstructParseResult   = Maybe (Either ParserError ([Stmt], ParserState))

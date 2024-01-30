@@ -1,8 +1,7 @@
 module Lexer (
     lexFull,
     defaultLexerState,
-    token,
-    LexingResult(..)
+    token
 ) where
 
 import Debug.Trace
@@ -138,18 +137,15 @@ stateToLocation s = (newTokenLocation (statePos s) (stateLine s))
 
 -- entry
 
-data LexingResult = Ok | Error
-    deriving (Show)
-
 ---- maps string into a list of tokens. returns successfully consumed tokens, second value is Error on failure
-lexFull :: LexerState -> String -> ([TokenWithInfo], LexingResult)
+lexFull :: LexerState -> String -> Either [TokenWithInfo] [TokenWithInfo]
 lexFull state s = case (lexToken s) of
     Just(TokenEof, _, _) ->
-        ([TokenWithInfo{token=TokenEof, tokenLocation=(stateToLocation state)}], Ok)
+        Right $ [TokenWithInfo{token=TokenEof, tokenLocation=(stateToLocation state)}]
     Just(t, rest, stateUpdate) -> 
         case (lexFull (updateState state stateUpdate) rest) of
-            (tokens, Ok) -> (c:tokens, Ok)
-            (tokens, Error) -> (c:tokens, Error)
+            Right tokens -> Right $ c:tokens
+            Left tokens -> Left $ c:tokens
         where c = TokenWithInfo{token=t, tokenLocation=(stateToLocation state)}
-    Nothing -> ([], Error)
+    Nothing -> Left $ []
 

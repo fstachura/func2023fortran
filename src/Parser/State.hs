@@ -3,7 +3,9 @@ module Parser.State (
     ParserError(..),
     currentTokenWithInfo,
     advanceParser,
-    newParserState
+    newParserState,
+    advanceIfLabel,
+    advanceDoVarNum
 ) where
 
 import Ast.TokenTypes
@@ -43,5 +45,13 @@ newParserState tokens = ParserState {
     previousToken=Nothing,
     lastIfLabel=0,
     lastDoVarNum=0
+}
+
+advanceIfLabel state@ParserState { lastIfLabel=l } = state {
+    lastIfLabel=(l+1)
+}
+
+advanceDoVarNum state@ParserState { lastDoVarNum=l } = state {
+    lastDoVarNum=(l+1)
 }
 

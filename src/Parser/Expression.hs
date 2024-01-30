@@ -11,31 +11,6 @@ import Parser.State
 type ExprParsingFunction                = ParserState -> ExprParseResult
 type ExprParseResult                    = Either ParserError (Expr, ParserState)
 
-tokenToBinaryOp :: Token -> Maybe(BinaryOp)
-tokenToBinaryOp TokenEqEq   = Just $ BinOpEq
-tokenToBinaryOp TokenEq     = Just $ BinOpEq
-tokenToBinaryOp TokenNeq    = Just $ BinOpNeq
-tokenToBinaryOp TokenEqv    = Just $ BinOpEq
-tokenToBinaryOp TokenNeqv   = Just $ BinOpNeq
-tokenToBinaryOp TokenGt     = Just $ BinOpGt
-tokenToBinaryOp TokenGeq    = Just $ BinOpGeq
-tokenToBinaryOp TokenLt     = Just $ BinOpLt
-tokenToBinaryOp TokenLeq    = Just $ BinOpLeq
-tokenToBinaryOp TokenPlus   = Just $ BinOpAdd
-tokenToBinaryOp TokenMinus  = Just $ BinOpSub
-tokenToBinaryOp TokenSlash  = Just $ BinOpDiv
-tokenToBinaryOp TokenStar   = Just $ BinOpMult
-tokenToBinaryOp TokenPow    = Just $ BinOpPow
-tokenToBinaryOp TokenAnd    = Just $ BinOpAnd
-tokenToBinaryOp TokenOr     = Just $ BinOpOr
-tokenToBinaryOp _           = Nothing
-
-tokenToUnaryOp :: Token -> Maybe(UnaryOp)
-tokenToUnaryOp TokenNot     = Just $ UnOpNot
-tokenToUnaryOp TokenMinus   = Just $ UnOpMinus
-tokenToUnaryOp TokenPlus    = Just $ UnOpPlus
-tokenToUnaryOp _            = Nothing
-
 convertToBinaryExpr :: Expr -> Maybe(TokenWithInfo) -> ExprParseResult -> ExprParseResult
 convertToBinaryExpr _ _ result@(Left(_)) = result
 convertToBinaryExpr _ (Nothing) (Right(_, state)) = Left $ ParserErrorUnknown $ currentTokenWithInfo state

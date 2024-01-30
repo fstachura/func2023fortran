@@ -1,4 +1,6 @@
 module Parser.Utils (
+    tokenToBinaryOp,
+    tokenToUnaryOp,
     matchToken,
     matchTokenOrFail,
     matchIdentifier,
@@ -8,12 +10,44 @@ module Parser.Utils (
     matchIntegerOrFail,
     matchKeyword,
     matchKeywordOrFail,
-    skipSemicolons,
+    skipSemicolons
 ) where
 
 import Ast.TokenTypes
+import Ast.AstTypes
 import Utils.Utils
 import Parser.State
+
+binaryOpTokenMap = [
+        (TokenEqEq, BinOpEq),
+        (TokenEq, BinOpEq),
+        (TokenNeq, BinOpNeq),
+        (TokenEqv, BinOpEq),
+        (TokenNeqv, BinOpNeq),
+        (TokenGt, BinOpGt),
+        (TokenGeq, BinOpGeq),
+        (TokenLt, BinOpLt),
+        (TokenLeq, BinOpLeq),
+        (TokenPlus, BinOpAdd),
+        (TokenMinus, BinOpSub),
+        (TokenSlash, BinOpDiv),
+        (TokenStar, BinOpMult),
+        (TokenPow, BinOpPow),
+        (TokenAnd, BinOpAnd),
+        (TokenOr, BinOpOr)
+    ]
+
+unaryOpTokenMap = [
+        (TokenNot, UnOpNot),
+        (TokenMinus, UnOpMinus),
+        (TokenPlus, UnOpPlus)
+    ]
+
+tokenToBinaryOp :: Token -> Maybe(BinaryOp)
+tokenToBinaryOp = (flip lookup) binaryOpTokenMap
+
+tokenToUnaryOp :: Token -> Maybe(UnaryOp)
+tokenToUnaryOp = (flip lookup) unaryOpTokenMap
 
 matchToken :: [Token] -> ParserState -> Maybe ParserState
 matchToken tokens state@ParserState{ tokensLeft=(TokenWithInfo{token=t}:_) }
@@ -53,6 +87,12 @@ matchList f orgState =
                 \(elList, postElListState) ->
                     (Right(el:elList, postElListState)))
             (matchToken [TokenComma] postElState)
+
+matchKeywordWithoutAdvance :: String -> ParserState -> Maybe ParserState
+matchKeywordWithoutAdvance s state@ParserState{ tokensLeft=(TokenWithInfo{token=(TokenIdentifier(is))}:_) }
+    | ((strToLower s) == (strToLower is)) = Just state
+    | otherwise                           = Nothing
+matchKeywordWithoutAdvance _ _ = Nothing
 
 matchKeyword :: String -> ParserState -> Maybe ParserState
 matchKeyword s state = (matchKeywordWithoutAdvance s state) >>= (Just . advanceParser)
