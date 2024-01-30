@@ -4,9 +4,8 @@ import Ast.AstTypes
 import Eval.Eval
 import Eval.GotoMap
 import Utils.Map
-import Utils.Utils
 import Lexer
-import Parser
+import Parser.Parser
 
 -- goto map 
 -- ifs and dos push their own goto map so that jumping into ifs is impossible
@@ -24,7 +23,7 @@ main = do
             let tokens = (lexFull defaultLexerState src)
             case (snd tokens) of
                 Ok -> 
-                    let parsed = (program $ newParserState $ fst tokens) in
+                    let parsed = (parse $ newParserState $ fst tokens) in
                     case parsed of 
                         Right(StmtBlockType(stmts), _) -> do
                             putStrLn $ show $ parsed
